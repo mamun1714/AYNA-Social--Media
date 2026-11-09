@@ -1,4 +1,4 @@
-name: Build AYNA Debug APK
+ৈname: Build AYNA Debug APK
 
 on:
   workflow_dispatch:
@@ -18,7 +18,14 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          - name: Find Gradle Wrapper
+  id: project
+  run: |
+    WRAPPER=$(find source -type f -name gradlew | head -n 1)
+    if [ -z "$WRAPPER" ]; then
+      echo "ERROR: gradlew not found in ZIP"
+      exit 1
+    fi
 
       - name: Extract AYNA Project
         run: |
