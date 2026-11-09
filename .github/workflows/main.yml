@@ -1,4 +1,5 @@
-ৈname: Build AYNA Debug APK
+
+name: Build AYNA Debug APK
 
 on:
   workflow_dispatch:
@@ -18,48 +19,24 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-                - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Build Debug APK
-        run: |
-          cd source/AYNA
-          gradle --no-daemon assembleDebug
-  id: project
-  run: |
-    WRAPPER=$(find source -type f -name gradlew | head -n 1)
-    if [ -z "$WRAPPER" ]; then
-      echo "ERROR: gradlew not found in ZIP"
-      exit 1
-    fi
+          java-version: '17'
 
       - name: Extract AYNA Project
         run: |
           mkdir -p source
           unzip -q AYNA-starter.zip -d source
 
-      - name: Find Android Project
-        id: project
-        run: |
-          WRAPPER=$(find source -type f -name gradlew | head -n 1)
-          if [ -z "$WRAPPER" ]; then
-            echo "Gradle wrapper not found."
-            find source -maxdepth 4 -type f
-            exit 1
-          fi
-          DIR=$(dirname "$WRAPPER")
-          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Build Debug APK
-        working-directory: source
+        working-directory: source/AYNA
         run: |
-          cd "${{ steps.project.outputs.dir }}"
-          chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug
+          gradle --no-daemon assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: AYNA-Debug-APK
-          path: source/**/build/outputs/apk/debug/*.apk
+          path: source/AYNA/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
