@@ -1,1 +1,52 @@
+name: Build AYNA Debug APK
 
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Extract AYNA Project
+        run: |
+          mkdir -p source
+          unzip -q AYNA-starter.zip -d source
+
+      - name: Find Android Project
+        id: project
+        run: |
+          WRAPPER=$(find source -type f -name gradlew | head -n 1)
+          if [ -z "$WRAPPER" ]; then
+            echo "Gradle wrapper not found."
+            find source -maxdepth 4 -type f
+            exit 1
+          fi
+          DIR=$(dirname "$WRAPPER")
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Build Debug APK
+        working-directory: source
+        run: |
+          cd "${{ steps.project.outputs.dir }}"
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AYNA-Debug-APK
+          path: source/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
