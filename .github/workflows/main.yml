@@ -10,4 +10,33 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    steps
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Extract AYNA Project
+        run: |
+          mkdir -p source
+          unzip -q AYNA-starter.zip -d source
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Debug APK
+        working-directory: source/AYNA
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AYNA-Debug-APK
+          path: source/AYNA/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
