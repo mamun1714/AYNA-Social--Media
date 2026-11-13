@@ -29,8 +29,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build Debug APK
-        working-directory: source/AYNA
         run: |
+          cd source/AYNA
           chmod +x gradlew
           ./gradlew assembleDebug
 
