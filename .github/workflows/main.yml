@@ -1,4 +1,3 @@
-
 name: Build AYNA Debug APK
 
 on:
@@ -21,22 +20,18 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Extract AYNA Project
-        run: |
-          mkdir -p source
-          unzip -q AYNA-starter.zip -d source
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
       - name: Build Debug APK
-        working-directory: source/AYNA
-        run: |
-          gradle --no-daemon assembleDebug
+        run: ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: AYNA-Debug-APK
-          path: source/AYNA/app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
