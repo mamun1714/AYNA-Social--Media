@@ -1,7 +1,9 @@
 package com.mamun.ayna;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
 import android.view.Gravity;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -34,5 +36,16 @@ public class MainActivity extends Activity {
         page.addView(logo);
         page.addView(subtitle);
         setContentView(page);
+
+        // ৩ সেকেন্ড পর স্বয়ংক্রিয়ভাবে পরের পেজে (HomeActivity) যাওয়ার কোড
+        new Handler().postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                // HomeActivity নামের পেজ না থাকলে আপনার পরবর্তী পেজের নাম এখানে দিতে পারেন
+                Intent intent = new Intent(MainActivity.this, HomeActivity.class);
+                startActivity(intent);
+                finish(); // স্প্ল্যাশ স্ক্রিন বন্ধ করে দেওয়া যাতে ব্যাক করলে আর এখানে না আসে
+            }
+        }, 3000); // 3000 মিলিছেকেন্ড = ৩ সেকেন্ড
     }
 }
