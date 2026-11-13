@@ -1,38 +1,39 @@
-package com.mamun.ayna;
-
-import android.app.Activity;
-import android.os.Bundle;
-import android.view.Gravity;
-import android.widget.LinearLayout;
-import android.widget.TextView;
-
-public class MainActivity extends Activity {
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-
-        LinearLayout page = new LinearLayout(this);
-        page.setOrientation(LinearLayout.VERTICAL);
-        page.setGravity(Gravity.CENTER);
-        page.setPadding(32, 32, 32, 32);
-        page.setBackgroundColor(0xFFF5F7FB);
-
-        TextView logo = new TextView(this);
-        logo.setText("AYNA");
-        logo.setTextSize(36);
-        logo.setTextColor(0xFF1769AA);
-        logo.setGravity(Gravity.CENTER);
-        logo.setTypeface(null, android.graphics.Typeface.BOLD);
-
-        TextView subtitle = new TextView(this);
-        subtitle.setText(getString(R.string.welcome));
-        subtitle.setTextSize(18);
-        subtitle.setTextColor(0xFF263238);
-        subtitle.setGravity(Gravity.CENTER);
-        subtitle.setPadding(0, 18, 0, 0);
-
-        page.addView(logo);
-        page.addView(subtitle);
-        setContentView(page);
+{
+  "project_info": {
+    "project_number": "55797961349",
+    "project_id": "ayna-ffdf5",
+    "storage_bucket": "ayna-ffdf5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:55797961349:android:baeac5e1e94dbd0dd7cfec",
+        "android_client_info": {
+          "package_name": "com.mamun.ayna"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "55797961349-uvq13r0ts7gokitkm2lmnkkb2jmdd73c.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBdAO9udc9tirOIjsv3JAYHbArhMo1u64Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "55797961349-uvq13r0ts7gokitkm2lmnkkb2jmdd73c.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
     }
+  ],
+  "configuration_version": "1"
 }
