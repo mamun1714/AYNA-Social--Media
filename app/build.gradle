@@ -1,4 +1,25 @@
+
 plugins {
-    id 'com.android.application' version '8.6.1' apply false
-    id 'com.google.gms.google-services' version '4.4.2' apply false
+    id 'com.android.application'
+    id 'com.google.gms.google-services'
+}
+
+android {
+    namespace 'com.mamun.ayna'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.mamun.ayna'
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+}
+
+dependencies {
+    implementation platform('com.google.firebase:firebase-bom:33.7.0')
+    implementation 'com.google.firebase:firebase-auth'
+    implementation 'com.google.firebase:firebase-firestore'
+    implementation 'com.google.firebase:firebase-storage'
 }
