@@ -18,22 +18,12 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Find and Build with Gradle
+    - name: Install Gradle & Build APK
       run: |
-        if [ -f "gradlew" ]; then
-          chmod +x gradlew
-          ./gradlew assembleDebug
-        elif [ -f "source/AYNA/gradlew" ]; then
-          cd source/AYNA
-          chmod +x gradlew
-          ./gradlew assembleDebug
-        else
-          echo "Gradle wrapper not found!"
-          exit 1
-        fi
+        gradle assembleDebug
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: AYNA-Debug-APK
-        path: '**/build/outputs/apk/debug/app-debug.apk'
+        path: '**/build/outputs/apk/debug/*.apk'
