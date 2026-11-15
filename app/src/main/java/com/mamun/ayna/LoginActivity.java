@@ -5,8 +5,12 @@ import android.os.Bundle;
 import android.view.Gravity;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.EditText;
+import android.widget.Button;
+import android.graphics.Color;
 
-public class HomeActivity extends Activity {
+public class LoginActivity extends Activity {
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -15,16 +19,34 @@ public class HomeActivity extends Activity {
         page.setOrientation(LinearLayout.VERTICAL);
         page.setGravity(Gravity.CENTER);
         page.setPadding(32, 32, 32, 32);
-        page.setBackgroundColor(0xFFFFFFFF);
+        page.setBackgroundColor(Color.WHITE);
 
         TextView title = new TextView(this);
-        title.setText("Welcome to AYNA Home");
-        title.setTextSize(24);
-        title.setTextColor(0xFF1769AA);
+        title.setText("AYNA Login");
+        title.setTextSize(30);
+        title.setTextColor(Color.rgb(23, 105, 170));
         title.setGravity(Gravity.CENTER);
-        title.setTypeface(null, android.graphics.Typeface.BOLD);
+
+        EditText email = new EditText(this);
+        email.setHint("Email Address");
+        email.setInputType(33);
+
+        EditText password = new EditText(this);
+        password.setHint("Password");
+        password.setInputType(129);
+
+        Button loginButton = new Button(this);
+        loginButton.setText("Login");
+
+        Button registerButton = new Button(this);
+        registerButton.setText("Create New Account");
 
         page.addView(title);
+        page.addView(email);
+        page.addView(password);
+        page.addView(loginButton);
+        page.addView(registerButton);
+
         setContentView(page);
     }
 }
