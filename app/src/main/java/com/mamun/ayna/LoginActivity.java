@@ -1,19 +1,34 @@
+
 package com.mamun.ayna;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.content.Intent;
+import android.graphics.Color;
 import android.view.Gravity;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.EditText;
 import android.widget.Button;
-import android.graphics.Color;
+import android.widget.Toast;
+
+import com.google.firebase.auth.FirebaseAuth;
 
 public class LoginActivity extends Activity {
+
+    private FirebaseAuth auth;
+    private EditText emailField, passwordField;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        auth = FirebaseAuth.getInstance();
+
+        if (auth.getCurrentUser() != null) {
+            openHome();
+            return;
+        }
 
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
@@ -22,18 +37,23 @@ public class LoginActivity extends Activity {
         page.setBackgroundColor(Color.WHITE);
 
         TextView title = new TextView(this);
-        title.setText("AYNA Login");
-        title.setTextSize(30);
+        title.setText("আয়না");
+        title.setTextSize(34);
         title.setTextColor(Color.rgb(23, 105, 170));
         title.setGravity(Gravity.CENTER);
 
-        EditText email = new EditText(this);
-        email.setHint("Email Address");
-        email.setInputType(33);
+        TextView subtitle = new TextView(this);
+        subtitle.setText("AYNA Social Media Login");
+        subtitle.setTextSize(18);
+        subtitle.setGravity(Gravity.CENTER);
 
-        EditText password = new EditText(this);
-        password.setHint("Password");
-        password.setInputType(129);
+        emailField = new EditText(this);
+        emailField.setHint("Email Address");
+        emailField.setInputType(33);
+
+        passwordField = new EditText(this);
+        passwordField.setHint("Password");
+        passwordField.setInputType(129);
 
         Button loginButton = new Button(this);
         loginButton.setText("Login");
@@ -41,12 +61,77 @@ public class LoginActivity extends Activity {
         Button registerButton = new Button(this);
         registerButton.setText("Create New Account");
 
+        loginButton.setOnClickListener(v -> loginUser());
+
+        registerButton.setOnClickListener(v -> registerUser());
+
         page.addView(title);
-        page.addView(email);
-        page.addView(password);
+        page.addView(subtitle);
+        page.addView(emailField);
+        page.addView(passwordField);
         page.addView(loginButton);
         page.addView(registerButton);
 
         setContentView(page);
+    }
+
+    private void loginUser() {
+        String email = emailField.getText().toString().trim();
+        String password = passwordField.getText().toString();
+
+        if (email.isEmpty() || password.isEmpty()) {
+            Toast.makeText(this, "Email and password required",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        auth.signInWithEmailAndPassword(email, password)
+                .addOnCompleteListener(this, task -> {
+                    if (task.isSuccessful()) {
+                        openHome();
+                    } else {
+                        Toast.makeText(this,
+                                "Login failed: " +
+                                task.getException().getMessage(),
+                                Toast.LENGTH_LONG).show();
+                    }
+                });
+    }
+
+    private void registerUser() {
+        String email = emailField.getText().toString().trim();
+        String password = passwordField.getText().toString();
+
+        if (email.isEmpty() || password.isEmpty()) {
+            Toast.makeText(this, "Email and password required",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (password.length() < 6) {
+            Toast.makeText(this, "Password must be at least 6 characters",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        auth.createUserWithEmailAndPassword(email, password)
+                .addOnCompleteListener(this, task -> {
+                    if (task.isSuccessful()) {
+                        Toast.makeText(this, "Account created successfully",
+                                Toast.LENGTH_SHORT).show();
+                        openHome();
+                    } else {
+                        Toast.makeText(this,
+                                "Registration failed: " +
+                                task.getException().getMessage(),
+                                Toast.LENGTH_LONG).show();
+                    }
+                });
+    }
+
+    private void openHome() {
+        Intent intent = new Intent(this, HomeActivity.class);
+        startActivity(intent);
+        finish();
     }
 }
