@@ -13,17 +13,25 @@ import android.widget.Button;
 import android.widget.Toast;
 
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.FieldValue;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class LoginActivity extends Activity {
 
     private FirebaseAuth auth;
-    private EditText emailField, passwordField;
+    private FirebaseFirestore db;
+
+    private EditText nameField, emailField, passwordField;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         auth = FirebaseAuth.getInstance();
+        db = FirebaseFirestore.getInstance();
 
         if (auth.getCurrentUser() != null) {
             openHome();
@@ -43,9 +51,12 @@ public class LoginActivity extends Activity {
         title.setGravity(Gravity.CENTER);
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("AYNA Social Media Login");
+        subtitle.setText("AYNA Social Media");
         subtitle.setTextSize(18);
         subtitle.setGravity(Gravity.CENTER);
+
+        nameField = new EditText(this);
+        nameField.setHint("Your Full Name");
 
         emailField = new EditText(this);
         emailField.setHint("Email Address");
@@ -62,11 +73,11 @@ public class LoginActivity extends Activity {
         registerButton.setText("Create New Account");
 
         loginButton.setOnClickListener(v -> loginUser());
-
         registerButton.setOnClickListener(v -> registerUser());
 
         page.addView(title);
         page.addView(subtitle);
+        page.addView(nameField);
         page.addView(emailField);
         page.addView(passwordField);
         page.addView(loginButton);
@@ -90,20 +101,19 @@ public class LoginActivity extends Activity {
                     if (task.isSuccessful()) {
                         openHome();
                     } else {
-                        Toast.makeText(this,
-                                "Login failed: " +
-                                task.getException().getMessage(),
+                        Toast.makeText(this, "Login failed",
                                 Toast.LENGTH_LONG).show();
                     }
                 });
     }
 
     private void registerUser() {
+        String name = nameField.getText().toString().trim();
         String email = emailField.getText().toString().trim();
         String password = passwordField.getText().toString();
 
-        if (email.isEmpty() || password.isEmpty()) {
-            Toast.makeText(this, "Email and password required",
+        if (name.isEmpty() || email.isEmpty() || password.isEmpty()) {
+            Toast.makeText(this, "Name, email and password required",
                     Toast.LENGTH_SHORT).show();
             return;
         }
@@ -117,9 +127,31 @@ public class LoginActivity extends Activity {
         auth.createUserWithEmailAndPassword(email, password)
                 .addOnCompleteListener(this, task -> {
                     if (task.isSuccessful()) {
-                        Toast.makeText(this, "Account created successfully",
-                                Toast.LENGTH_SHORT).show();
-                        openHome();
+                        String uid = auth.getCurrentUser().getUid();
+
+                        Map<String, Object> user = new HashMap<>();
+                        user.put("uid", uid);
+                        user.put("name", name);
+                        user.put("email", email);
+                        user.put("createdAt",
+                                FieldValue.serverTimestamp());
+
+                        db.collection("users")
+                                .document(uid)
+                                .set(user)
+                                .addOnSuccessListener(unused -> {
+                                    Toast.makeText(this,
+                                            "Account created successfully",
+                                            Toast.LENGTH_SHORT).show();
+                                    openHome();
+                                })
+                                .addOnFailureListener(e -> {
+                                    Toast.makeText(this,
+                                            "Profile save failed: " +
+                                            e.getMessage(),
+                                            Toast.LENGTH_LONG).show();
+                                });
+
                     } else {
                         Toast.makeText(this,
                                 "Registration failed: " +
