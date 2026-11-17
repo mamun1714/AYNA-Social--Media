@@ -23,7 +23,9 @@ import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.ListenerRegistration;
 import com.google.firebase.firestore.Query;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class HomeActivity extends Activity {
@@ -34,7 +36,10 @@ public class HomeActivity extends Activity {
 
     private FirebaseAuth auth;
     private FirebaseFirestore db;
+
     private ListenerRegistration feedListener;
+    private final List<ListenerRegistration> likeListeners =
+            new ArrayList<>();
 
     private int dp(int value) {
         return (int) (value * getResources()
@@ -236,6 +241,13 @@ public class HomeActivity extends Activity {
                 });
     }
 
+    private void clearLikeListeners() {
+        for (ListenerRegistration listener : likeListeners) {
+            listener.remove();
+        }
+        likeListeners.clear();
+    }
+
     private void loadPosts() {
         feedListener = db.collection("posts")
                 .orderBy("createdAt", Query.Direction.DESCENDING)
@@ -248,6 +260,7 @@ public class HomeActivity extends Activity {
                         return;
                     }
 
+                    clearLikeListeners();
                     feedLayout.removeAllViews();
 
                     if (snapshot == null || snapshot.isEmpty()) {
@@ -270,12 +283,15 @@ public class HomeActivity extends Activity {
                         if (name == null) name = "AYNA User";
                         if (message == null) message = "";
 
-                        addPostCard(name, message);
+                        addPostCard(
+                                document.getId(), name, message);
                     }
                 });
     }
 
-    private void addPostCard(String name, String message) {
+    private void addPostCard(String postId,
+                             String name, String message) {
+
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(14), dp(14),
@@ -289,18 +305,109 @@ public class HomeActivity extends Activity {
         TextView postText = text(message, 16, Color.DKGRAY);
         postText.setPadding(0, dp(12), 0, dp(12));
 
-        TextView footer = text(
-                "Like     Comment     Share", 14, Color.GRAY);
+        Button likeButton = button("👍 Like");
+        TextView likeCount = text(
+                "০ Likes", 14, Color.GRAY);
+        likeCount.setPadding(0, dp(5), 0, dp(5));
 
         card.addView(author);
         card.addView(postText);
-        card.addView(footer);
+        card.addView(likeButton);
+        card.addView(likeCount);
+
+        setupLike(postId, likeButton, likeCount);
 
         LinearLayout.LayoutParams params =
                 new LinearLayout.LayoutParams(-1, -2);
         params.bottomMargin = dp(10);
 
         feedLayout.addView(card, params);
+    }
+
+    private void setupLike(String postId,
+                           Button likeButton,
+                           TextView likeCount) {
+
+        FirebaseUser user = auth.getCurrentUser();
+
+        if (user == null) {
+            likeButton.setEnabled(false);
+            return;
+        }
+
+        DocumentReference likesRef = db.collection("posts")
+                .document(postId)
+                .collection("likes");
+
+        DocumentReference myLikeRef =
+                likesRef.document(user.getUid());
+
+        ListenerRegistration listener =
+                likesRef.addSnapshotListener((snapshot, error) -> {
+
+                    if (error != null || snapshot == null) {
+                        return;
+                    }
+
+                    int count = snapshot.size();
+                    boolean liked =
+                            snapshot.getDocuments().stream()
+                                    .anyMatch(doc ->
+                                            doc.getId().equals(user.getUid()));
+
+                    likeButton.setText(
+                            liked ? "👍 Liked" : "👍 Like");
+
+                    likeButton.setTextColor(
+                            liked ? Color.rgb(23, 105, 170)
+                                    : Color.DKGRAY);
+
+                    likeCount.setText(count + " Likes");
+                });
+
+        likeListeners.add(listener);
+
+        likeButton.setOnClickListener(v -> {
+            likeButton.setEnabled(false);
+
+            myLikeRef.get()
+                    .addOnSuccessListener(document -> {
+
+                        if (document.exists()) {
+                            myLikeRef.delete()
+                                    .addOnSuccessListener(unused -> {
+                                        likeButton.setEnabled(true);
+                                    })
+                                    .addOnFailureListener(error -> {
+                                        likeButton.setEnabled(true);
+                                        showMessage("Like সরানো যায়নি: "
+                                                + error.getMessage());
+                                    });
+                        } else {
+                            Map<String, Object> like =
+                                    new HashMap<>();
+
+                            like.put("uid", user.getUid());
+                            like.put("createdAt",
+                                    FieldValue.serverTimestamp());
+
+                            myLikeRef.set(like)
+                                    .addOnSuccessListener(unused -> {
+                                        likeButton.setEnabled(true);
+                                    })
+                                    .addOnFailureListener(error -> {
+                                        likeButton.setEnabled(true);
+                                        showMessage("Like দেওয়া যায়নি: "
+                                                + error.getMessage());
+                                    });
+                        }
+                    })
+                    .addOnFailureListener(error -> {
+                        likeButton.setEnabled(true);
+                        showMessage("Like পরীক্ষা করা যায়নি: "
+                                + error.getMessage());
+                    });
+        });
     }
 
     private void showMessage(String message) {
@@ -313,6 +420,8 @@ public class HomeActivity extends Activity {
         if (feedListener != null) {
             feedListener.remove();
         }
+
+        clearLikeListeners();
         super.onDestroy();
     }
 }
