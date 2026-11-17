@@ -335,13 +335,11 @@ public class HomeActivity extends Activity {
             return;
         }
 
-        DocumentReference likesRef = db.collection("posts")
-                .document(postId)
-                .collection("likes");
-
-        DocumentReference myLikeRef =
-                likesRef.document(user.getUid());
-
+        DocumentReference likesRef = db.collection("posts") 
+com.google.firebase.firestore.CollectionReference likesRef =
+        db.collection("posts")
+        .document(postId)
+        .collection("likes");
         ListenerRegistration listener =
                 likesRef.addSnapshotListener((snapshot, error) -> {
 
