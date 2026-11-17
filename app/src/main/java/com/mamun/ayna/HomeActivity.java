@@ -2,10 +2,12 @@
 package com.mamun.ayna;
 
 import android.app.Activity;
-import android.os.Bundle;
+import android.app.AlertDialog;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Bundle;
 import android.view.Gravity;
 import android.widget.Button;
 import android.widget.EditText;
@@ -38,6 +40,7 @@ public class HomeActivity extends Activity {
     private FirebaseFirestore db;
 
     private ListenerRegistration feedListener;
+
     private final List<ListenerRegistration> likeListeners =
             new ArrayList<>();
 
@@ -80,6 +83,7 @@ public class HomeActivity extends Activity {
     }
 
     private void createScreen() {
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.rgb(245, 247, 250));
@@ -148,6 +152,7 @@ public class HomeActivity extends Activity {
         content.addView(feedLayout);
 
         scroll.addView(content);
+
         root.addView(scroll, new LinearLayout.LayoutParams(
                 -1, 0, 1));
 
@@ -162,10 +167,9 @@ public class HomeActivity extends Activity {
         for (String item : items) {
             Button navButton = button(item);
             navButton.setTextSize(11);
+
             navButton.setOnClickListener(v ->
-                    Toast.makeText(this,
-                            item + " বিভাগ পরে তৈরি হবে",
-                            Toast.LENGTH_SHORT).show());
+                    showMessage(item + " বিভাগ পরবর্তী ধাপে চালু হবে"));
 
             navigation.addView(navButton,
                     new LinearLayout.LayoutParams(
@@ -177,6 +181,7 @@ public class HomeActivity extends Activity {
     }
 
     private void publishPost() {
+
         FirebaseUser user = auth.getCurrentUser();
 
         if (user == null) {
@@ -198,6 +203,7 @@ public class HomeActivity extends Activity {
                 .document(user.getUid())
                 .get()
                 .addOnSuccessListener(profile -> {
+
                     String name = profile.getString("name");
 
                     if (name == null || name.trim().isEmpty()) {
@@ -220,6 +226,7 @@ public class HomeActivity extends Activity {
                 db.collection("posts").document();
 
         Map<String, Object> post = new HashMap<>();
+
         post.put("postId", postRef.getId());
         post.put("uid", user.getUid());
         post.put("authorName", name);
@@ -242,13 +249,16 @@ public class HomeActivity extends Activity {
     }
 
     private void clearLikeListeners() {
+
         for (ListenerRegistration listener : likeListeners) {
             listener.remove();
         }
+
         likeListeners.clear();
     }
 
     private void loadPosts() {
+
         feedListener = db.collection("posts")
                 .orderBy("createdAt", Query.Direction.DESCENDING)
                 .limit(50)
@@ -264,12 +274,16 @@ public class HomeActivity extends Activity {
                     feedLayout.removeAllViews();
 
                     if (snapshot == null || snapshot.isEmpty()) {
+
                         TextView empty = text(
-                                "এখনো কোনো পোস্ট নেই।\nআপনার প্রথম পোস্টটি শেয়ার করুন!",
+                                "এখনো কোনো পোস্ট নেই।\n"
+                                        + "আপনার প্রথম পোস্টটি শেয়ার করুন!",
                                 15, Color.GRAY);
+
                         empty.setGravity(Gravity.CENTER);
                         empty.setPadding(dp(12), dp(30),
                                 dp(12), dp(30));
+
                         feedLayout.addView(empty);
                         return;
                     }
@@ -277,8 +291,11 @@ public class HomeActivity extends Activity {
                     for (DocumentSnapshot document :
                             snapshot.getDocuments()) {
 
-                        String name = document.getString("authorName");
-                        String message = document.getString("text");
+                        String name =
+                                document.getString("authorName");
+
+                        String message =
+                                document.getString("text");
 
                         if (name == null) name = "AYNA User";
                         if (message == null) message = "";
@@ -294,31 +311,60 @@ public class HomeActivity extends Activity {
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
+
         card.setPadding(dp(14), dp(14),
                 dp(14), dp(14));
+
         card.setBackground(shape(Color.WHITE, 12));
 
         TextView author = text(name, 16,
                 Color.rgb(23, 105, 170));
+
         author.setTypeface(null, Typeface.BOLD);
 
-        TextView postText = text(message, 16, Color.DKGRAY);
+        TextView postText = text(
+                message, 16, Color.DKGRAY);
+
         postText.setPadding(0, dp(12), 0, dp(12));
 
         Button likeButton = button("👍 Like");
+
         TextView likeCount = text(
-                "০ Likes", 14, Color.GRAY);
+                "0 Likes", 14, Color.GRAY);
+
         likeCount.setPadding(0, dp(5), 0, dp(5));
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+
+        Button commentButton = button("💬 Comment");
+        Button shareButton = button("↗ Share");
+
+        actions.addView(likeButton,
+                new LinearLayout.LayoutParams(0, -2, 1));
+
+        actions.addView(commentButton,
+                new LinearLayout.LayoutParams(0, -2, 1));
+
+        actions.addView(shareButton,
+                new LinearLayout.LayoutParams(0, -2, 1));
 
         card.addView(author);
         card.addView(postText);
-        card.addView(likeButton);
         card.addView(likeCount);
+        card.addView(actions);
 
         setupLike(postId, likeButton, likeCount);
 
+        commentButton.setOnClickListener(v ->
+                showComments(postId));
+
+        shareButton.setOnClickListener(v ->
+                sharePost(name, message));
+
         LinearLayout.LayoutParams params =
                 new LinearLayout.LayoutParams(-1, -2);
+
         params.bottomMargin = dp(10);
 
         feedLayout.addView(card, params);
@@ -335,53 +381,63 @@ public class HomeActivity extends Activity {
             return;
         }
 
-        DocumentReference likesRef = db.collection("posts") 
-com.google.firebase.firestore.CollectionReference likesRef =
-        db.collection("posts")
-        .document(postId)
-        .collection("likes");
+        DocumentReference myLikeRef =
+                db.collection("posts")
+                        .document(postId)
+                        .collection("likes")
+                        .document(user.getUid());
+
         ListenerRegistration listener =
-                likesRef.addSnapshotListener((snapshot, error) -> {
+                db.collection("posts")
+                        .document(postId)
+                        .collection("likes")
+                        .addSnapshotListener((snapshot, error) -> {
 
-                    if (error != null || snapshot == null) {
-                        return;
-                    }
+                            if (error != null || snapshot == null) {
+                                return;
+                            }
 
-                    int count = snapshot.size();
-                    boolean liked =
-                            snapshot.getDocuments().stream()
-                                    .anyMatch(doc ->
-                                            doc.getId().equals(user.getUid()));
+                            int count = snapshot.size();
 
-                    likeButton.setText(
-                            liked ? "👍 Liked" : "👍 Like");
+                            boolean liked =
+                                    snapshot.getDocuments().stream()
+                                            .anyMatch(doc ->
+                                                    doc.getId().equals(
+                                                            user.getUid()));
 
-                    likeButton.setTextColor(
-                            liked ? Color.rgb(23, 105, 170)
-                                    : Color.DKGRAY);
+                            likeButton.setText(
+                                    liked ? "👍 Liked" : "👍 Like");
 
-                    likeCount.setText(count + " Likes");
-                });
+                            likeButton.setTextColor(
+                                    liked
+                                            ? Color.rgb(23, 105, 170)
+                                            : Color.DKGRAY);
+
+                            likeCount.setText(count + " Likes");
+                        });
 
         likeListeners.add(listener);
 
         likeButton.setOnClickListener(v -> {
+
             likeButton.setEnabled(false);
 
             myLikeRef.get()
                     .addOnSuccessListener(document -> {
 
                         if (document.exists()) {
+
                             myLikeRef.delete()
-                                    .addOnSuccessListener(unused -> {
-                                        likeButton.setEnabled(true);
-                                    })
+                                    .addOnSuccessListener(unused ->
+                                            likeButton.setEnabled(true))
                                     .addOnFailureListener(error -> {
                                         likeButton.setEnabled(true);
                                         showMessage("Like সরানো যায়নি: "
                                                 + error.getMessage());
                                     });
+
                         } else {
+
                             Map<String, Object> like =
                                     new HashMap<>();
 
@@ -390,9 +446,8 @@ com.google.firebase.firestore.CollectionReference likesRef =
                                     FieldValue.serverTimestamp());
 
                             myLikeRef.set(like)
-                                    .addOnSuccessListener(unused -> {
-                                        likeButton.setEnabled(true);
-                                    })
+                                    .addOnSuccessListener(unused ->
+                                            likeButton.setEnabled(true))
                                     .addOnFailureListener(error -> {
                                         likeButton.setEnabled(true);
                                         showMessage("Like দেওয়া যায়নি: "
@@ -408,18 +463,176 @@ com.google.firebase.firestore.CollectionReference likesRef =
         });
     }
 
+    private void showComments(String postId) {
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(dp(16), dp(10),
+                dp(16), dp(10));
+
+        ScrollView scroll = new ScrollView(this);
+
+        LinearLayout commentList = new LinearLayout(this);
+        commentList.setOrientation(LinearLayout.VERTICAL);
+
+        scroll.addView(commentList);
+
+        EditText input = new EditText(this);
+        input.setHint("আপনার মন্তব্য লিখুন");
+
+        Button send = button("মন্তব্য পাঠান");
+
+        layout.addView(scroll,
+                new LinearLayout.LayoutParams(-1, dp(220)));
+
+        layout.addView(input);
+        layout.addView(send);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("মন্তব্য")
+                .setView(layout)
+                .setNegativeButton("বন্ধ", null)
+                .create();
+
+        db.collection("posts")
+                .document(postId)
+                .collection("comments")
+                .orderBy("createdAt", Query.Direction.ASCENDING)
+                .limit(100)
+                .get()
+                .addOnSuccessListener(snapshot -> {
+
+                    commentList.removeAllViews();
+
+                    if (snapshot.isEmpty()) {
+                        commentList.addView(text(
+                                "এখনো কোনো মন্তব্য নেই",
+                                14, Color.GRAY));
+                    }
+
+                    for (DocumentSnapshot doc :
+                            snapshot.getDocuments()) {
+
+                        String author = doc.getString("authorName");
+                        String message = doc.getString("text");
+
+                        if (author == null) author = "AYNA User";
+                        if (message == null) message = "";
+
+                        TextView comment = text(
+                                author + "\n" + message,
+                                14, Color.DKGRAY);
+
+                        comment.setPadding(0, dp(8), 0, dp(8));
+
+                        commentList.addView(comment);
+                    }
+                })
+                .addOnFailureListener(error ->
+                        showMessage("মন্তব্য লোড হয়নি: "
+                                + error.getMessage()));
+
+        send.setOnClickListener(v -> {
+
+            FirebaseUser user = auth.getCurrentUser();
+
+            if (user == null) {
+                showMessage("প্রথমে লগইন করুন");
+                return;
+            }
+
+            String message = input.getText()
+                    .toString().trim();
+
+            if (message.isEmpty()) {
+                input.setError("মন্তব্য লিখুন");
+                return;
+            }
+
+            send.setEnabled(false);
+
+            db.collection("users")
+                    .document(user.getUid())
+                    .get()
+                    .addOnSuccessListener(profile -> {
+
+                        String name = profile.getString("name");
+
+                        if (name == null || name.trim().isEmpty()) {
+                            name = "AYNA User";
+                        }
+
+                        Map<String, Object> comment =
+                                new HashMap<>();
+
+                        comment.put("uid", user.getUid());
+                        comment.put("authorName", name);
+                        comment.put("text", message);
+                        comment.put("createdAt",
+                                FieldValue.serverTimestamp());
+
+                        DocumentReference postRef =
+                                db.collection("posts").document(postId);
+
+                        postRef.collection("comments")
+                                .add(comment)
+                                .addOnSuccessListener(ref -> {
+
+                                    postRef.update(
+                                            "commentsCount",
+                                            FieldValue.increment(1));
+
+                                    showMessage("মন্তব্য পাঠানো হয়েছে");
+                                    dialog.dismiss();
+                                })
+                                .addOnFailureListener(error -> {
+                                    send.setEnabled(true);
+                                    showMessage("মন্তব্য পাঠানো যায়নি: "
+                                            + error.getMessage());
+                                });
+                    })
+                    .addOnFailureListener(error -> {
+                        send.setEnabled(true);
+                        showMessage("প্রোফাইল পাওয়া যায়নি");
+                    });
+        });
+
+        dialog.show();
+    }
+
+    private void sharePost(String name, String message) {
+
+        Intent intent = new Intent(Intent.ACTION_SEND);
+
+        intent.setType("text/plain");
+
+        intent.putExtra(
+                Intent.EXTRA_TEXT,
+                name + " - AYNA Social\n\n" + message);
+
+        try {
+            startActivity(Intent.createChooser(
+                    intent, "পোস্ট শেয়ার করুন"));
+        } catch (Exception error) {
+            showMessage("শেয়ার করা যায়নি");
+        }
+    }
+
     private void showMessage(String message) {
+
         Toast.makeText(this, message,
                 Toast.LENGTH_LONG).show();
     }
 
     @Override
     protected void onDestroy() {
+
         if (feedListener != null) {
             feedListener.remove();
         }
 
         clearLikeListeners();
+
         super.onDestroy();
     }
 }
