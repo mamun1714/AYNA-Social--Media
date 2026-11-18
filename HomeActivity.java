@@ -3,9 +3,22 @@ package com.mamun.ayna;
 import android.app.Activity;
 import android.os.Bundle;
 import android.view.Gravity;
-import android.widget.LinearLayout;
+import android.widget.LinearLayout; 
 import android.widget.TextView;
 
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
+import android.widget.ImageView;
+import android.widget.MediaController;
+import android.widget.VideoView;
+
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 public class HomeActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
