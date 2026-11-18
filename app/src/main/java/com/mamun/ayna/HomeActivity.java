@@ -1,5 +1,10 @@
 
 package com.mamun.ayna;
+import android.net.Uri;
+import android.widget.ImageView;
+import android.widget.VideoView;
+import android.widget.MediaController;
+import com.bumptech.glide.Glide;
 
 import android.app.Activity;
 import android.app.AlertDialog;
