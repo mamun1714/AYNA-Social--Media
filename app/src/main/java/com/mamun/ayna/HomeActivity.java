@@ -135,11 +135,32 @@ public class HomeActivity extends Activity {
                         Color.rgb(23, 105, 170)));
         postButton.setTextColor(Color.WHITE);
         postButton.setOnClickListener(v -> publishPost());
-
+        
         composer.addView(composerTitle);
         composer.addView(postInput);
         composer.addView(postButton);
+
+        Button mediaPostButton = button("ছবি / ভিডিও পোস্ট করুন");
+        mediaPostButton.setTextColor(Color.WHITE);
+        mediaPostButton.setBackgroundTintList(
+                android.content.res.ColorStateList.valueOf(
+                        Color.rgb(23, 105, 170)));
+
+        mediaPostButton.setOnClickListener(v -> {
+            if (auth.getCurrentUser() == null) {
+                showMessage("প্রথমে লগইন করুন");
+                return;
+            }
+
+            Intent intent = new Intent(
+                    HomeActivity.this,
+                    CreatePostActivity.class);
+            startActivity(intent);
+        });
+
+        composer.addView(mediaPostButton);
         content.addView(composer);
+
 
         TextView feedTitle = text("নিউজ ফিড", 20,
                 Color.rgb(23, 105, 170));
