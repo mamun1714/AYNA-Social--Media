@@ -38,6 +38,10 @@ public class HomeActivity extends Activity {
         title.setTypeface(null, android.graphics.Typeface.BOLD);
 
         page.addView(title);
-        setContentView(page);
+        setContentView(page);        clearLikeListeners();
+
+        super.onDestroy();
+    }
+}
     }
 }
