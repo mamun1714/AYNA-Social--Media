@@ -245,8 +245,31 @@ public class HomeActivity extends Activity {
                 });
     }
 
-    private void savePost(FirebaseUser user,
-                          String name, String message) {
+private void savePost(FirebaseUser user, String name, String message) {
+
+    String postId = db.collection("posts").document().getId();
+
+    Map<String, Object> post = new HashMap<>();
+    post.put("postId", postId);
+    post.put("uid", user.getUid());
+    post.put("authorName", name);
+    post.put("text", message);
+    post.put("mediaUrl", "");
+    post.put("mediaType", "text");
+    post.put("createdAt", FieldValue.serverTimestamp());
+    post.put("likesCount", 0);
+    post.put("commentsCount", 0);
+
+    db.collection("posts")
+            .document(postId)
+            .set(post)
+            .addOnSuccessListener(unused -> {
+                postInput.setText("");
+                showMessage("পোস্ট প্রকাশ হয়েছে");
+            })
+            .addOnFailureListener(error ->
+                    showMessage("পোস্ট করা যায়নি: " + error.getMessage()));
+}
 
         DocumentReference postRef =
                 db.collection("posts").document();
@@ -283,7 +306,58 @@ public class HomeActivity extends Activity {
         likeListeners.clear();
     }
 
-    private void loadPosts() {
+private void loadPosts() {
+
+    if (feedListener != null) {
+        feedListener.remove();
+    }
+
+    feedListener = db.collection("posts")
+            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .limit(50)
+            .addSnapshotListener((snapshot, error) -> {
+
+                if (error != null) {
+                    showMessage("পোস্ট লোড হয়নি: " + error.getMessage());
+                    return;
+                }
+
+                if (snapshot == null || feedLayout == null) {
+                    return;
+                }
+
+                clearLikeListeners();
+                feedLayout.removeAllViews();
+
+                if (snapshot.isEmpty()) {
+                    TextView empty = text("এখনো কোনো পোস্ট নেই", 16);
+                    feedLayout.addView(empty);
+                    return;
+                }
+
+                for (DocumentSnapshot document : snapshot.getDocuments()) {
+
+                    String postId = document.getId();
+                    String name = document.getString("authorName");
+                    String message = document.getString("text");
+                    String mediaUrl = document.getString("mediaUrl");
+                    String mediaType = document.getString("mediaType");
+
+                    if (name == null) name = "ব্যবহারকারী";
+                    if (message == null) message = "";
+                    if (mediaUrl == null) mediaUrl = "";
+                    if (mediaType == null) mediaType = "text";
+
+                    addPostCard(
+                            postId,
+                            name,
+                            message,
+                            mediaUrl,
+                            mediaType
+                    );
+                }
+            });
+}
 
         feedListener = db.collection("posts")
                 .orderBy("createdAt", Query.Direction.DESCENDING)
@@ -332,7 +406,89 @@ public class HomeActivity extends Activity {
                 });
     }
 
-    private void addPostCard(String postId,
+private void addPostCard(
+        String postId,
+        String name,
+        String message,
+        String mediaUrl,
+        String mediaType) {
+
+    LinearLayout card = new LinearLayout(this);
+    card.setOrientation(LinearLayout.VERTICAL);
+    card.setPadding(dp(12), dp(12), dp(12), dp(12));
+    card.setBackground(shape(Color.WHITE, 12));
+
+    LinearLayout.LayoutParams cardParams =
+            new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+            );
+
+    cardParams.setMargins(0, dp(6), 0, dp(10));
+    card.setLayoutParams(cardParams);
+
+    TextView author = text(name, 17);
+    author.setTypeface(null, Typeface.BOLD);
+    card.addView(author);
+
+    if (!message.trim().isEmpty()) {
+        TextView content = text(message, 16);
+        card.addView(content);
+    }
+
+    if (mediaUrl != null && !mediaUrl.isEmpty()) {
+
+        if ("image".equals(mediaType)) {
+
+            ImageView image = new ImageView(this);
+            image.setAdjustViewBounds(true);
+            image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+
+            card.addView(image);
+
+            Glide.with(this)
+                    .load(mediaUrl)
+                    .into(image);
+
+        } else if ("video".equals(mediaType)) {
+
+            VideoView video = new VideoView(this);
+            video.setVideoURI(Uri.parse(mediaUrl));
+
+            MediaController controller = new MediaController(this);
+            controller.setAnchorView(video);
+            video.setMediaController(controller);
+
+            card.addView(video);
+
+        }
+    }
+
+    LinearLayout actions = new LinearLayout(this);
+    actions.setOrientation(LinearLayout.HORIZONTAL);
+
+    Button likeButton = button("লাইক");
+    TextView likeCount = text("0", 14);
+    Button commentButton = button("কমেন্ট");
+    Button shareButton = button("শেয়ার");
+
+    actions.addView(likeButton);
+    actions.addView(likeCount);
+    actions.addView(commentButton);
+    actions.addView(shareButton);
+
+    card.addView(actions);
+
+    setupLike(postId, likeButton, likeCount);
+
+    commentButton.setOnClickListener(v ->
+            showComments(postId));
+
+    shareButton.setOnClickListener(v ->
+            sharePost(name, message, mediaUrl));
+
+    feedLayout.addView(card);
+}
                              String name, String message) {
 
         LinearLayout card = new LinearLayout(this);
@@ -626,7 +782,20 @@ public class HomeActivity extends Activity {
         dialog.show();
     }
 
-    private void sharePost(String name, String message) {
+private void sharePost(String name, String message, String mediaUrl) {
+
+    String shareText = name + "\n\n" + message;
+
+    if (mediaUrl != null && !mediaUrl.isEmpty()) {
+        shareText += "\n\n" + mediaUrl;
+    }
+
+    Intent intent = new Intent(Intent.ACTION_SEND);
+    intent.setType("text/plain");
+    intent.putExtra(Intent.EXTRA_TEXT, shareText);
+
+    startActivity(Intent.createChooser(intent, "AYNA পোস্ট শেয়ার"));
+}
 
         Intent intent = new Intent(Intent.ACTION_SEND);
 
