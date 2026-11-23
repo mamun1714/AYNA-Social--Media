@@ -5,7 +5,6 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -21,7 +20,6 @@ import android.widget.Toast;
 import com.bumptech.glide.Glide;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.FirebaseFirestore;
@@ -30,26 +28,36 @@ import com.google.firebase.firestore.Query;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class HomeActivity extends Activity {
 
-    private LinearLayout root, feedLayout, storyLayout;
-    private EditText postInput;
     private FirebaseAuth auth;
     private FirebaseFirestore db;
-    private ListenerRegistration feedListener;
-    private ListenerRegistration notificationListener;
-
-    private final List<ListenerRegistration> listeners = new ArrayList<>();
-    private final List<String> blockedUsers = new ArrayList<>();
+    private FirebaseUser currentUser;
 
     private String myUid;
     private String myName = "AYNA User";
 
+    private LinearLayout rootLayout;
+    private LinearLayout storyLayout;
+    private LinearLayout feedLayout;
+    private TextView notificationText;
+
+    private final Set<String> blockedUsers = new HashSet<>();
+    private final List<ListenerRegistration> likeListeners = new ArrayList<>();
+
+    private ListenerRegistration feedListener;
+    private ListenerRegistration notificationListener;
+
+    private boolean blockedUsersLoaded = false;
+
     private final int BLUE = Color.rgb(23, 105, 170);
-    private final int BG = Color.rgb(245, 247, 251);
+    private final int DARK = Color.rgb(35, 40, 45);
+    private final int LIGHT = Color.rgb(245, 247, 250);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -57,169 +65,223 @@ public class HomeActivity extends Activity {
 
         auth = FirebaseAuth.getInstance();
         db = FirebaseFirestore.getInstance();
+        currentUser = auth.getCurrentUser();
 
-        FirebaseUser user = auth.getCurrentUser();
-
-        if (user == null) {
+        if (currentUser == null) {
+            Toast.makeText(this, "আগে লগইন করুন", Toast.LENGTH_LONG).show();
             finish();
             return;
         }
 
-        myUid = user.getUid();
+        myUid = currentUser.getUid();
 
+        createScreen();
         loadMyProfile();
         loadBlockedUsers();
-        createScreen();
-        loadStories();
-        loadPosts();
         listenNotifications();
     }
 
-    private void createScreen() {
-
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(BG);
-
-        LinearLayout header = new LinearLayout(this);
-        header.setPadding(15, 12, 15, 12);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setBackgroundColor(Color.WHITE);
-
-        TextView logo = new TextView(this);
-        logo.setText("আয়না AYNA");
-        logo.setTextSize(23);
-        logo.setTypeface(null, Typeface.BOLD);
-        logo.setTextColor(BLUE);
-
-        header.addView(logo, new LinearLayout.LayoutParams(
-                0, -2, 1
-        ));
-
-        Button search = makeButton("Search");
-        search.setOnClickListener(v -> showSearch());
-        header.addView(search);
-
-        Button profile = makeButton("Profile");
-        profile.setOnClickListener(v -> showProfile(myUid));
-        header.addView(profile);
-
-        root.addView(header);
-
-        storyLayout = new LinearLayout(this);
-        storyLayout.setPadding(8, 8, 8, 8);
-        storyLayout.setOrientation(LinearLayout.HORIZONTAL);
-        storyLayout.setBackgroundColor(Color.WHITE);
-
-        root.addView(storyLayout);
-
-        postInput = new EditText(this);
-        postInput.setHint("আপনার মনের কথা লিখুন...");
-        postInput.setMinLines(2);
-        postInput.setPadding(12, 10, 12, 10);
-
-        root.addView(postInput);
-
-        LinearLayout postActions = new LinearLayout(this);
-        postActions.setGravity(Gravity.CENTER);
-
-        Button postButton = makeButton("Post");
-        postButton.setOnClickListener(v -> publishPost());
-        postActions.addView(postButton);
-
-        Button mediaButton = makeButton("Photo / Video");
-        mediaButton.setOnClickListener(v -> openCreatePost());
-        postActions.addView(mediaButton);
-
-        Button storyButton = makeButton("Story");
-        storyButton.setOnClickListener(v -> addStory());
-        postActions.addView(storyButton);
-
-        root.addView(postActions);
-
-        ScrollView scroll = new ScrollView(this);
-        feedLayout = new LinearLayout(this);
-        feedLayout.setOrientation(LinearLayout.VERTICAL);
-        feedLayout.setPadding(8, 8, 8, 8);
-
-        scroll.addView(feedLayout);
-        root.addView(scroll, new LinearLayout.LayoutParams(
-                -1, 0, 1
-        ));
-
-        createBottomNavigation();
-
-        setContentView(root);
+    private TextView makeText(String value, int size, int color) {
+        TextView text = new TextView(this);
+        text.setText(value);
+        text.setTextSize(size);
+        text.setTextColor(color);
+        text.setPadding(8, 8, 8, 8);
+        return text;
     }
 
-    private Button makeButton(String text) {
+    private Button makeButton(String value) {
         Button button = new Button(this);
-        button.setText(text);
-        button.setTextSize(12);
+        button.setText(value);
         button.setAllCaps(false);
         return button;
     }
 
-    private TextView makeText(String text, int size) {
-        TextView view = new TextView(this);
-        view.setText(text);
-        view.setTextSize(size);
-        view.setTextColor(Color.BLACK);
-        view.setPadding(8, 6, 8, 6);
-        return view;
+    private void createScreen() {
+        rootLayout = new LinearLayout(this);
+        rootLayout.setOrientation(LinearLayout.VERTICAL);
+        rootLayout.setBackgroundColor(LIGHT);
+
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(12, 8, 12, 8);
+        header.setBackgroundColor(Color.WHITE);
+
+        TextView logo = makeText("AYNA", 26, BLUE);
+        logo.setTypeface(null, Typeface.BOLD);
+        header.addView(logo, new LinearLayout.LayoutParams(
+                0, -2, 1
+        ));
+
+        Button searchButton = makeButton("Search");
+        searchButton.setOnClickListener(v -> searchUsers());
+        header.addView(searchButton);
+
+        Button profileButton = makeButton("Profile");
+        profileButton.setOnClickListener(v -> showProfile(myUid));
+        header.addView(profileButton);
+
+        rootLayout.addView(header);
+
+        notificationText = makeText("Notifications", 13, DARK);
+        notificationText.setPadding(14, 6, 14, 6);
+        rootLayout.addView(notificationText);
+
+        ScrollView mainScroll = new ScrollView(this);
+        LinearLayout mainContent = new LinearLayout(this);
+        mainContent.setOrientation(LinearLayout.VERTICAL);
+
+        TextView storyTitle = makeText("Stories", 18, DARK);
+        storyTitle.setTypeface(null, Typeface.BOLD);
+        mainContent.addView(storyTitle);
+
+        storyLayout = new LinearLayout(this);
+        storyLayout.setOrientation(LinearLayout.HORIZONTAL);
+        storyLayout.setPadding(8, 4, 8, 8);
+        mainContent.addView(storyLayout);
+
+        Button addStoryButton = makeButton("+ Add Story");
+        addStoryButton.setOnClickListener(v -> addStory());
+        mainContent.addView(addStoryButton);
+
+        TextView postTitle = makeText("Create a post", 18, DARK);
+        postTitle.setTypeface(null, Typeface.BOLD);
+        mainContent.addView(postTitle);
+
+        EditText postInput = new EditText(this);
+        postInput.setHint("What's on your mind?");
+        postInput.setMinLines(2);
+        postInput.setGravity(Gravity.TOP);
+        mainContent.addView(postInput);
+
+        Button publishButton = makeButton("Post");
+        publishButton.setOnClickListener(v -> {
+            String content = postInput.getText().toString().trim();
+
+            if (content.isEmpty()) {
+                Toast.makeText(this, "কিছু লিখুন", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            if (!isSafeContent(content)) {
+                Toast.makeText(this, "এই লেখা পোস্ট করা যাবে না", Toast.LENGTH_LONG).show();
+                return;
+            }
+
+            publishPost(content);
+            postInput.setText("");
+        });
+        mainContent.addView(publishButton);
+
+        Button mediaButton = makeButton("Photo / Video");
+        mediaButton.setOnClickListener(v -> openCreatePost());
+        mainContent.addView(mediaButton);
+
+        TextView feedTitle = makeText("News Feed", 20, DARK);
+        feedTitle.setTypeface(null, Typeface.BOLD);
+        mainContent.addView(feedTitle);
+
+        feedLayout = new LinearLayout(this);
+        feedLayout.setOrientation(LinearLayout.VERTICAL);
+        mainContent.addView(feedLayout);
+
+        mainScroll.addView(mainContent);
+
+        rootLayout.addView(mainScroll, new LinearLayout.LayoutParams(
+                -1, 0, 1
+        ));
+
+        createBottomNavigation();
+        setContentView(rootLayout);
+    }
+
+    private void createBottomNavigation() {
+        LinearLayout nav = new LinearLayout(this);
+        nav.setGravity(Gravity.CENTER);
+        nav.setBackgroundColor(Color.WHITE);
+
+        Button home = makeButton("Home");
+        home.setOnClickListener(v -> {
+            if (feedListener == null) loadPosts();
+        });
+
+        Button friends = makeButton("Friends");
+        friends.setOnClickListener(v -> showFriends());
+
+        Button messages = makeButton("Messages");
+        messages.setOnClickListener(v -> openChat());
+
+        Button alerts = makeButton("Alerts");
+        alerts.setOnClickListener(v -> showNotifications());
+
+        Button creator = makeButton("Creator");
+        creator.setOnClickListener(v -> openCreatorStudio());
+
+        nav.addView(home, new LinearLayout.LayoutParams(0, -2, 1));
+        nav.addView(friends, new LinearLayout.LayoutParams(0, -2, 1));
+        nav.addView(messages, new LinearLayout.LayoutParams(0, -2, 1));
+        nav.addView(alerts, new LinearLayout.LayoutParams(0, -2, 1));
+        nav.addView(creator, new LinearLayout.LayoutParams(0, -2, 1));
+
+        rootLayout.addView(nav);
     }
 
     private void loadMyProfile() {
         db.collection("users").document(myUid)
                 .get()
-                .addOnSuccessListener(doc -> {
-                    if (doc.exists()) {
-                        String name = doc.getString("name");
-                        if (name != null && !name.isEmpty()) {
+                .addOnSuccessListener(document -> {
+                    if (document.exists()) {
+                        String name = document.getString("name");
+                        if (name != null && !name.trim().isEmpty()) {
                             myName = name;
                         }
                     }
                 });
     }
 
-    // 1. Text Post
+    private void loadBlockedUsers() {
+        db.collection("users").document(myUid)
+                .collection("blocked")
+                .get()
+                .addOnSuccessListener(snapshot -> {
+                    blockedUsers.clear();
 
-    private void publishPost() {
+                    for (DocumentSnapshot document : snapshot.getDocuments()) {
+                        blockedUsers.add(document.getId());
+                    }
 
-        String text = postInput.getText().toString().trim();
+                    blockedUsersLoaded = true;
+                    loadPosts();
+                    loadStories();
+                })
+                .addOnFailureListener(error -> {
+                    blockedUsersLoaded = true;
+                    loadPosts();
+                    loadStories();
+                    showError("Blocked users লোড করা যায়নি");
+                });
+    }
 
-        if (text.isEmpty()) {
-            showMessage("কিছু লিখুন");
-            return;
-        }
-
-        if (!isSafeContent(text)) {
-            showMessage("এই লেখাটি প্রকাশ করা যাচ্ছে না");
-            return;
-        }
-
+    private void publishPost(String content) {
         Map<String, Object> post = new HashMap<>();
         post.put("uid", myUid);
         post.put("authorName", myName);
-        post.put("text", text);
+        post.put("text", content);
         post.put("mediaUrl", "");
         post.put("mediaType", "text");
         post.put("createdAt", FieldValue.serverTimestamp());
         post.put("likesCount", 0);
         post.put("commentsCount", 0);
 
-        db.collection("posts").add(post)
-                .addOnSuccessListener(ref -> {
-                    postInput.setText("");
-                    showMessage("পোস্ট প্রকাশ হয়েছে");
-                })
-                .addOnFailureListener(e ->
-                        showMessage("পোস্ট করা যায়নি"));
+        db.collection("posts")
+                .add(post)
+                .addOnSuccessListener(reference ->
+                        Toast.makeText(this, "Post published", Toast.LENGTH_SHORT).show())
+                .addOnFailureListener(error -> showError("Post করা যায়নি"));
     }
 
-    // 2. News Feed
-
     private void loadPosts() {
+        if (!blockedUsersLoaded) return;
 
         if (feedListener != null) {
             feedListener.remove();
@@ -229,85 +291,89 @@ public class HomeActivity extends Activity {
                 .orderBy("createdAt", Query.Direction.DESCENDING)
                 .limit(50)
                 .addSnapshotListener((snapshot, error) -> {
+                    if (error != null) {
+                        showError("Feed লোড করা যায়নি");
+                        return;
+                    }
 
-                    if (error != null || snapshot == null) return;
+                    if (snapshot == null) return;
 
                     feedLayout.removeAllViews();
 
-                    for (DocumentSnapshot doc : snapshot.getDocuments()) {
-
-                        String uid = doc.getString("uid");
+                    for (DocumentSnapshot document : snapshot.getDocuments()) {
+                        String uid = document.getString("uid");
 
                         if (uid == null || blockedUsers.contains(uid)) {
                             continue;
                         }
 
-                        addPostCard(doc);
+                        addPostCard(document);
                     }
                 });
     }
 
-    private void addPostCard(DocumentSnapshot doc) {
+    private void addPostCard(DocumentSnapshot document) {
+        String postId = document.getId();
+        String uid = document.getString("uid");
+        String author = document.getString("authorName");
+        String content = document.getString("text");
+        String mediaUrl = document.getString("mediaUrl");
+        String mediaType = document.getString("mediaType");
 
-        String postId = doc.getId();
-        String uid = doc.getString("uid");
-        String author = doc.getString("authorName");
-        String text = doc.getString("text");
-        String mediaUrl = doc.getString("mediaUrl");
-        String mediaType = doc.getString("mediaType");
+        if (author == null) author = "AYNA User";
+        if (content == null) content = "";
+        if (mediaUrl == null) mediaUrl = "";
+        if (mediaType == null) mediaType = "text";
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(12, 12, 12, 12);
+        card.setPadding(12, 10, 12, 10);
         card.setBackgroundColor(Color.WHITE);
 
         LinearLayout.LayoutParams cardParams =
                 new LinearLayout.LayoutParams(-1, -2);
-        cardParams.setMargins(0, 0, 0, 10);
+        cardParams.setMargins(6, 6, 6, 8);
         card.setLayoutParams(cardParams);
 
-        TextView authorView = makeText(
-                author == null ? "AYNA User" : author, 17);
-        authorView.setTypeface(null, Typeface.BOLD);
-        authorView.setOnClickListener(v -> showProfile(uid));
-        card.addView(authorView);
+        TextView authorText = makeText(author, 17, BLUE);
+        authorText.setTypeface(null, Typeface.BOLD);
+        authorText.setOnClickListener(v -> {
+            if (uid != null) showProfile(uid);
+        });
+        card.addView(authorText);
 
-        if (text != null && !text.isEmpty()) {
-            card.addView(makeText(text, 15));
-        }
+        TextView postText = makeText(content, 15, DARK);
+        card.addView(postText);
 
-        if (mediaUrl != null && !mediaUrl.isEmpty()) {
-
+        if (!mediaUrl.isEmpty()) {
             if ("image".equals(mediaType)) {
-
                 ImageView image = new ImageView(this);
                 image.setAdjustViewBounds(true);
+                image.setScaleType(ImageView.ScaleType.FIT_CENTER);
 
-                card.addView(image);
+                card.addView(image, new LinearLayout.LayoutParams(
+                        -1, 350
+                ));
 
-                Glide.with(this)
-                        .load(mediaUrl)
-                        .into(image);
+                Glide.with(this).load(mediaUrl).into(image);
 
             } else if ("video".equals(mediaType)) {
-
-                TextView videoLink = makeText("ভিডিও দেখুন", 16);
-                videoLink.setTextColor(BLUE);
-
-                videoLink.setOnClickListener(v -> {
-                    Intent intent = new Intent(
-                            Intent.ACTION_VIEW, Uri.parse(mediaUrl));
-                    intent.setDataAndType(
-                            Uri.parse(mediaUrl), "video/*");
-                    startActivity(intent);
+                Button videoButton = makeButton("Play Video");
+                videoButton.setOnClickListener(v -> {
+                    try {
+                        Intent intent = new Intent(Intent.ACTION_VIEW);
+                        intent.setDataAndType(Uri.parse(mediaUrl), "video/*");
+                        startActivity(intent);
+                    } catch (Exception e) {
+                        showError("ভিডিও চালানো যাচ্ছে না");
+                    }
                 });
-
-                card.addView(videoLink);
+                card.addView(videoButton);
             }
         }
 
         LinearLayout actions = new LinearLayout(this);
-        actions.setGravity(Gravity.CENTER);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
 
         Button like = makeButton("Like");
         like.setOnClickListener(v -> toggleLike(postId));
@@ -316,80 +382,90 @@ public class HomeActivity extends Activity {
         comment.setOnClickListener(v -> showComments(postId));
 
         Button share = makeButton("Share");
-        share.setOnClickListener(v -> sharePost(text));
+        share.setOnClickListener(v -> sharePost(content));
 
-        actions.addView(like);
-        actions.addView(comment);
-        actions.addView(share);
+        actions.addView(like, new LinearLayout.LayoutParams(0, -2, 1));
+        actions.addView(comment, new LinearLayout.LayoutParams(0, -2, 1));
+        actions.addView(share, new LinearLayout.LayoutParams(0, -2, 1));
 
         card.addView(actions);
 
+        TextView likeCount = makeText("Likes: 0", 13, DARK);
+        card.addView(likeCount);
+        listenLikeCount(postId, likeCount);
+
+        LinearLayout moreActions = new LinearLayout(this);
+
         Button report = makeButton("Report");
         report.setOnClickListener(v -> reportPost(postId, uid));
-        card.addView(report);
 
-        Button block = makeButton("Block User");
-        block.setOnClickListener(v -> blockUser(uid));
-        card.addView(block);
-
-        feedLayout.addView(card);
-
-        listenLikeCount(postId, like);
-    }
-
-    // 3. Like / Unlike
-
-    private void toggleLike(String postId) {
-
-        DocumentReference likeRef = db.collection("posts")
-                .document(postId)
-                .collection("likes")
-                .document(myUid);
-
-        likeRef.get().addOnSuccessListener(doc -> {
-
-            if (doc.exists()) {
-                likeRef.delete();
-            } else {
-                Map<String, Object> data = new HashMap<>();
-                data.put("uid", myUid);
-                data.put("createdAt", FieldValue.serverTimestamp());
-                likeRef.set(data);
+        Button block = makeButton("Block");
+        block.setOnClickListener(v -> {
+            if (uid != null && !uid.equals(myUid)) {
+                blockUser(uid);
             }
         });
+
+        moreActions.addView(report);
+        moreActions.addView(block);
+        card.addView(moreActions);
+
+        feedLayout.addView(card);
     }
 
-    private void listenLikeCount(String postId, Button button) {
+    private void toggleLike(String postId) {
+        db.collection("posts").document(postId)
+                .collection("likes").document(myUid)
+                .get()
+                .addOnSuccessListener(document -> {
+                    if (document.exists()) {
+                        document.getReference().delete()
+                                .addOnFailureListener(error ->
+                                        showError("Unlike করা যায়নি"));
+                    } else {
+                        Map<String, Object> like = new HashMap<>();
+                        like.put("uid", myUid);
+                        like.put("createdAt", FieldValue.serverTimestamp());
 
+                        db.collection("posts").document(postId)
+                                .collection("likes").document(myUid)
+                                .set(like)
+                                .addOnFailureListener(error ->
+                                        showError("Like করা যায়নি"));
+                    }
+                })
+                .addOnFailureListener(error -> showError("Like যাচাই করা যায়নি"));
+    }
+
+    private void listenLikeCount(String postId, TextView countText) {
         ListenerRegistration registration =
-                db.collection("posts")
-                        .document(postId)
+                db.collection("posts").document(postId)
                         .collection("likes")
                         .addSnapshotListener((snapshot, error) -> {
-
-                            if (snapshot == null) return;
-
-                            button.setText("Like " +
-                                    snapshot.size());
+                            if (error != null || snapshot == null) return;
+                            countText.setText("Likes: " + snapshot.size());
                         });
 
-        listeners.add(registration);
+        likeListeners.add(registration);
     }
 
-    // 4. Comment এবং 5. Reply
-
     private void showComments(String postId) {
-
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(12, 8, 12, 8);
+
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout commentsLayout = new LinearLayout(this);
+        commentsLayout.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(commentsLayout);
+
+        layout.addView(scroll, new LinearLayout.LayoutParams(
+                -1, 0, 1
+        ));
 
         EditText input = new EditText(this);
-        input.setHint("মন্তব্য লিখুন");
-
-        Button send = makeButton("Send");
-
+        input.setHint("Write a comment...");
         layout.addView(input);
-        layout.addView(send);
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("Comments")
@@ -397,269 +473,325 @@ public class HomeActivity extends Activity {
                 .setNegativeButton("Close", null)
                 .create();
 
+        Button send = makeButton("Send");
+        layout.addView(send);
+
         send.setOnClickListener(v -> {
+            String text = input.getText().toString().trim();
 
-            String comment = input.getText().toString().trim();
+            if (text.isEmpty()) return;
 
-            if (comment.isEmpty()) return;
-
-            if (!isSafeContent(comment)) {
-                showMessage("মন্তব্যটি প্রকাশ করা যাচ্ছে না");
+            if (!isSafeContent(text)) {
+                Toast.makeText(this, "এই মন্তব্য পাঠানো যাবে না",
+                        Toast.LENGTH_SHORT).show();
                 return;
             }
 
-            addComment(postId, comment, "");
-            dialog.dismiss();
+            addComment(postId, text, "");
+            input.setText("");
         });
 
-        dialog.show();
-
-        db.collection("posts")
-                .document(postId)
+        db.collection("posts").document(postId)
                 .collection("comments")
                 .orderBy("createdAt", Query.Direction.ASCENDING)
                 .limit(100)
                 .get()
                 .addOnSuccessListener(snapshot -> {
+                    commentsLayout.removeAllViews();
 
-                    for (DocumentSnapshot doc :
-                            snapshot.getDocuments()) {
+                    Map<String, List<DocumentSnapshot>> replies = new HashMap<>();
 
-                        String name = doc.getString("authorName");
-                        String message = doc.getString("text");
-                        String commentId = doc.getId();
+                    for (DocumentSnapshot item : snapshot.getDocuments()) {
+                        String parent = item.getString("parentCommentId");
 
-                        TextView item = makeText(
-                                (name == null ? "User" : name)
-                                        + ": "
-                                        + (message == null ? "" : message),
-                                14);
-
-                        item.setOnClickListener(v ->
-                                showReplyDialog(postId, commentId));
-
-                        layout.addView(item, 0);
+                        if (parent != null && !parent.isEmpty()) {
+                            if (!replies.containsKey(parent)) {
+                                replies.put(parent, new ArrayList<>());
+                            }
+                            replies.get(parent).add(item);
+                        }
                     }
-                });
+
+                    for (DocumentSnapshot item : snapshot.getDocuments()) {
+                        String parent = item.getString("parentCommentId");
+
+                        if (parent != null && !parent.isEmpty()) continue;
+
+                        addCommentView(
+                                commentsLayout,
+                                postId,
+                                item,
+                                false
+                        );
+
+                        List<DocumentSnapshot> childReplies =
+                                replies.get(item.getId());
+
+                        if (childReplies != null) {
+                            for (DocumentSnapshot reply : childReplies) {
+                                addCommentView(
+                                        commentsLayout,
+                                        postId,
+                                        reply,
+                                        true
+                                );
+                            }
+                        }
+                    }
+                })
+                .addOnFailureListener(error ->
+                        showError("Comments লোড করা যায়নি"));
+
+        dialog.show();
     }
 
-    private void addComment(
-            String postId, String text, String parentId) {
+    private void addCommentView(
+            LinearLayout parent,
+            String postId,
+            DocumentSnapshot item,
+            boolean isReply
+    ) {
+        String author = item.getString("authorName");
+        String text = item.getString("text");
 
-        Map<String, Object> data = new HashMap<>();
-        data.put("uid", myUid);
-        data.put("authorName", myName);
-        data.put("text", text);
-        data.put("parentCommentId", parentId);
-        data.put("createdAt", FieldValue.serverTimestamp());
+        if (author == null) author = "User";
+        if (text == null) text = "";
 
-        db.collection("posts")
-                .document(postId)
+        TextView commentText = makeText(
+                (isReply ? "     ↳ " : "") + author + ": " + text,
+                14,
+                DARK
+        );
+
+        parent.addView(commentText);
+
+        if (!isReply) {
+            Button replyButton = makeButton("Reply");
+            replyButton.setOnClickListener(v ->
+                    showReplyDialog(postId, item.getId()));
+            parent.addView(replyButton);
+        }
+    }
+
+    private void addComment(String postId, String text, String parentId) {
+        Map<String, Object> comment = new HashMap<>();
+        comment.put("uid", myUid);
+        comment.put("authorName", myName);
+        comment.put("text", text);
+        comment.put("parentCommentId", parentId);
+        comment.put("createdAt", FieldValue.serverTimestamp());
+
+        db.collection("posts").document(postId)
                 .collection("comments")
-                .add(data)
-                .addOnSuccessListener(ref -> {
-
-                    if (parentId.isEmpty()) {
-                        db.collection("posts")
-                                .document(postId)
-                                .update("commentsCount",
-                                        FieldValue.increment(1));
+                .add(comment)
+                .addOnSuccessListener(reference -> {
+                    if (parentId == null || parentId.isEmpty()) {
+                        db.collection("posts").document(postId)
+                                .update("commentsCount", FieldValue.increment(1));
                     }
 
-                    showMessage("মন্তব্য প্রকাশ হয়েছে");
-                });
+                    Toast.makeText(this, "Comment sent",
+                            Toast.LENGTH_SHORT).show();
+                })
+                .addOnFailureListener(error ->
+                        showError("Comment পাঠানো যায়নি"));
     }
 
-    private void showReplyDialog(
-            String postId, String commentId) {
-
+    private void showReplyDialog(String postId, String commentId) {
         EditText input = new EditText(this);
-        input.setHint("Reply লিখুন");
+        input.setHint("Write a reply");
 
         new AlertDialog.Builder(this)
                 .setTitle("Reply")
                 .setView(input)
-                .setPositiveButton("Send", (d, w) -> {
-
-                    String reply = input.getText().toString().trim();
-
-                    if (!reply.isEmpty() && isSafeContent(reply)) {
-                        addComment(postId, reply, commentId);
-                    }
-                })
                 .setNegativeButton("Cancel", null)
+                .setPositiveButton("Send", (dialog, which) -> {
+                    String text = input.getText().toString().trim();
+
+                    if (text.isEmpty()) return;
+
+                    if (!isSafeContent(text)) {
+                        showError("এই উত্তর পাঠানো যাবে না");
+                        return;
+                    }
+
+                    addComment(postId, text, commentId);
+                })
                 .show();
     }
 
-    // 6. Share
-
-    private void sharePost(String text) {
-
+    private void sharePost(String content) {
         Intent intent = new Intent(Intent.ACTION_SEND);
         intent.setType("text/plain");
-        intent.putExtra(Intent.EXTRA_TEXT,
-                text == null ? "AYNA Social" : text);
+        intent.putExtra(Intent.EXTRA_TEXT, content);
 
-        startActivity(Intent.createChooser(intent, "Share"));
+        try {
+            startActivity(Intent.createChooser(intent, "Share post"));
+        } catch (Exception e) {
+            showError("Share করা যাচ্ছে না");
+        }
     }
 
-    // 7. Search
-
-    private void showSearch() {
-
+    private void searchUsers() {
         EditText input = new EditText(this);
-        input.setHint("নাম লিখে Search করুন");
+        input.setHint("Search user name");
 
         new AlertDialog.Builder(this)
                 .setTitle("Search Users")
                 .setView(input)
-                .setPositiveButton("Search", (d, w) ->
-                        searchUsers(input.getText().toString().trim()))
                 .setNegativeButton("Cancel", null)
+                .setPositiveButton("Search", (dialog, which) -> {
+                    String name = input.getText().toString().trim();
+
+                    if (name.isEmpty()) return;
+
+                    db.collection("users")
+                            .orderBy("name")
+                            .startAt(name)
+                            .endAt(name + "\uf8ff")
+                            .limit(30)
+                            .get()
+                            .addOnSuccessListener(snapshot -> {
+                                LinearLayout results = new LinearLayout(this);
+                                results.setOrientation(LinearLayout.VERTICAL);
+
+                                for (DocumentSnapshot user : snapshot.getDocuments()) {
+                                    String uid = user.getId();
+                                    String userName = user.getString("name");
+
+                                    if (userName == null) userName = "User";
+
+                                    if (blockedUsers.contains(uid)) continue;
+
+                                    Button item = makeButton(userName);
+                                    item.setOnClickListener(v -> showProfile(uid));
+                                    results.addView(item);
+                                }
+
+                                new AlertDialog.Builder(this)
+                                        .setTitle("Search Results")
+                                        .setView(results)
+                                        .setPositiveButton("Close", null)
+                                        .show();
+                            })
+                            .addOnFailureListener(error ->
+                                    showError("Search করা যায়নি"));
+                })
                 .show();
     }
 
-    private void searchUsers(String name) {
-
-        if (name.isEmpty()) return;
-
-        db.collection("users")
-                .orderBy("name")
-                .startAt(name)
-                .endAt(name + "\uf8ff")
-                .limit(20)
+    private void showProfile(String uid) {
+        db.collection("users").document(uid)
                 .get()
-                .addOnSuccessListener(snapshot -> {
-
-                    LinearLayout results = new LinearLayout(this);
-                    results.setOrientation(LinearLayout.VERTICAL);
-
-                    for (DocumentSnapshot doc :
-                            snapshot.getDocuments()) {
-
-                        String uid = doc.getId();
-                        String username = doc.getString("name");
-
-                        if (uid.equals(myUid)) continue;
-
-                        TextView item = makeText(
-                                username == null ? "User" : username, 17);
-
-                        item.setOnClickListener(v ->
-                                showProfile(uid));
-
-                        results.addView(item);
+                .addOnSuccessListener(document -> {
+                    if (!document.exists()) {
+                        showError("Profile পাওয়া যায়নি");
+                        return;
                     }
 
-                    new AlertDialog.Builder(this)
-                            .setTitle("Search Results")
-                            .setView(results)
-                            .setPositiveButton("Close", null)
-                            .show();
-                });
-    }
+                    String name = document.getString("name");
+                    String email = document.getString("email");
 
-    // 8. Profile
-
-    private void showProfile(String uid) {
-
-        if (uid == null) return;
-
-        db.collection("users")
-                .document(uid)
-                .get()
-                .addOnSuccessListener(doc -> {
-
-                    String name = doc.getString("name");
-                    String email = doc.getString("email");
+                    if (name == null) name = "AYNA User";
+                    if (email == null) email = "";
 
                     LinearLayout layout = new LinearLayout(this);
+                    layout.setPadding(16, 12, 16, 12);
                     layout.setOrientation(LinearLayout.VERTICAL);
 
-                    layout.addView(makeText(
-                            "নাম: " + (name == null ? "" : name), 18));
+                    layout.addView(makeText("Name: " + name, 17, DARK));
+                    layout.addView(makeText("Email: " + email, 14, DARK));
 
-                    layout.addView(makeText(
-                            "Email: " + (email == null ? "" : email), 14));
-
-                    if (!uid.equals(myUid)) {
-
-                        Button follow = makeButton("Follow / Unfollow");
-                        follow.setOnClickListener(v ->
-                                toggleFollow(uid));
-
-                        layout.addView(follow);
-                    }
-
-                    new AlertDialog.Builder(this)
+                    AlertDialog dialog = new AlertDialog.Builder(this)
                             .setTitle("Profile")
                             .setView(layout)
-                            .setPositiveButton("Close", null)
-                            .show();
-                });
-    }
+                            .setNegativeButton("Close", null)
+                            .create();
 
-    // 9. Follow / Unfollow
+                    if (!uid.equals(myUid)) {
+                        Button follow = makeButton("Follow / Unfollow");
+                        layout.addView(follow);
+                        follow.setOnClickListener(v -> toggleFollow(uid));
+                    }
+
+                    Object adminValue = document.get("isAdmin");
+                    if (Boolean.TRUE.equals(adminValue)) {
+                        Button admin = makeButton("Admin Review");
+                        layout.addView(admin);
+                        admin.setOnClickListener(v -> {
+                            dialog.dismiss();
+                            showAdminReview();
+                        });
+                    }
+
+                    dialog.show();
+                })
+                .addOnFailureListener(error -> showError("Profile লোড করা যায়নি"));
+    }
 
     private void toggleFollow(String targetUid) {
+        if (targetUid.equals(myUid)) return;
 
-        if (targetUid == null || targetUid.equals(myUid)) return;
+        db.collection("users").document(myUid)
+                .collection("following").document(targetUid)
+                .get()
+                .addOnSuccessListener(document -> {
+                    boolean alreadyFollowing = document.exists();
 
-        DocumentReference following = db.collection("users")
-                .document(myUid)
-                .collection("following")
-                .document(targetUid);
+                    db.runBatch(batch -> {
+                        if (alreadyFollowing) {
+                            batch.delete(
+                                    db.collection("users").document(myUid)
+                                            .collection("following").document(targetUid)
+                            );
 
-        DocumentReference follower = db.collection("users")
-                .document(targetUid)
-                .collection("followers")
-                .document(myUid);
+                            batch.delete(
+                                    db.collection("users").document(targetUid)
+                                            .collection("followers").document(myUid)
+                            );
+                        } else {
+                            Map<String, Object> data = new HashMap<>();
+                            data.put("uid", targetUid);
+                            data.put("createdAt", FieldValue.serverTimestamp());
 
-        following.get().addOnSuccessListener(doc -> {
+                            batch.set(
+                                    db.collection("users").document(myUid)
+                                            .collection("following").document(targetUid),
+                                    data
+                            );
 
-            if (doc.exists()) {
+                            batch.set(
+                                    db.collection("users").document(targetUid)
+                                            .collection("followers").document(myUid),
+                                    data
+                            );
+                        }
 
-                following.delete();
-                follower.delete();
-
-            } else {
-
-                Map<String, Object> data = new HashMap<>();
-                data.put("uid", targetUid);
-                data.put("createdAt", FieldValue.serverTimestamp());
-
-                db.runBatch(batch -> {
-                    batch.set(following, data);
-                    batch.set(follower, data);
-                });
-
-                sendNotification(targetUid, "আপনাকে Follow করেছেন");
-            }
-        });
+                        return null;
+                    }).addOnSuccessListener(unused ->
+                            Toast.makeText(this,
+                                    alreadyFollowing ? "Unfollow করা হয়েছে" : "Follow করা হয়েছে",
+                                    Toast.LENGTH_SHORT).show()
+                    ).addOnFailureListener(error ->
+                            showError("Follow পরিবর্তন করা যায়নি"));
+                })
+                .addOnFailureListener(error -> showError("Follow যাচাই করা যায়নি"));
     }
 
-    // 10. Friends
-
     private void showFriends() {
-
-        db.collection("users")
-                .document(myUid)
+        db.collection("users").document(myUid)
                 .collection("following")
                 .get()
                 .addOnSuccessListener(snapshot -> {
-
                     LinearLayout layout = new LinearLayout(this);
                     layout.setOrientation(LinearLayout.VERTICAL);
 
-                    for (DocumentSnapshot doc :
-                            snapshot.getDocuments()) {
+                    for (DocumentSnapshot item : snapshot.getDocuments()) {
+                        String uid = item.getId();
 
-                        String uid = doc.getId();
-
-                        TextView item = makeText(uid, 15);
-                        item.setOnClickListener(v -> showProfile(uid));
-
-                        layout.addView(item);
+                        Button button = makeButton(uid);
+                        button.setOnClickListener(v -> showProfile(uid));
+                        layout.addView(button);
                     }
 
                     new AlertDialog.Builder(this)
@@ -667,41 +799,32 @@ public class HomeActivity extends Activity {
                             .setView(layout)
                             .setPositiveButton("Close", null)
                             .show();
-                });
+                })
+                .addOnFailureListener(error -> showError("Friends লোড করা যায়নি"));
     }
 
-    // 11. Story
-
     private void loadStories() {
-
-        storyLayout.removeAllViews();
-
-        Button add = makeButton("+ Story");
-        add.setOnClickListener(v -> addStory());
-        storyLayout.addView(add);
-
         db.collection("stories")
                 .orderBy("createdAt", Query.Direction.DESCENDING)
                 .limit(20)
                 .get()
                 .addOnSuccessListener(snapshot -> {
+                    storyLayout.removeAllViews();
 
-                    for (DocumentSnapshot doc :
-                            snapshot.getDocuments()) {
+                    for (DocumentSnapshot item : snapshot.getDocuments()) {
+                        String uid = item.getString("uid");
+                        String text = item.getString("text");
 
-                        String name = doc.getString("authorName");
-                        Button story = makeButton(
-                                name == null ? "Story" : name);
+                        if (uid == null || blockedUsers.contains(uid)) continue;
+                        if (text == null) text = "Story";
 
-                        story.setOnClickListener(v -> {
-                            String text = doc.getString("text");
-
-                            new AlertDialog.Builder(this)
-                                    .setTitle("Story")
-                                    .setMessage(text == null ? "" : text)
-                                    .setPositiveButton("Close", null)
-                                    .show();
-                        });
+                        Button story = makeButton(text);
+                        story.setOnClickListener(v ->
+                                new AlertDialog.Builder(this)
+                                        .setTitle("Story")
+                                        .setMessage(text)
+                                        .setPositiveButton("Close", null)
+                                        .show());
 
                         storyLayout.addView(story);
                     }
@@ -709,287 +832,250 @@ public class HomeActivity extends Activity {
     }
 
     private void addStory() {
-
         EditText input = new EditText(this);
-        input.setHint("Story লিখুন");
+        input.setHint("Write your story");
 
         new AlertDialog.Builder(this)
-                .setTitle("Create Story")
+                .setTitle("Add Story")
                 .setView(input)
-                .setPositiveButton("Publish", (d, w) -> {
-
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Publish", (dialog, which) -> {
                     String text = input.getText().toString().trim();
 
-                    if (text.isEmpty() || !isSafeContent(text)) return;
+                    if (text.isEmpty()) return;
 
-                    Map<String, Object> data = new HashMap<>();
-                    data.put("uid", myUid);
-                    data.put("authorName", myName);
-                    data.put("text", text);
-                    data.put("createdAt", FieldValue.serverTimestamp());
+                    if (!isSafeContent(text)) {
+                        showError("এই Story প্রকাশ করা যাবে না");
+                        return;
+                    }
 
-                    db.collection("stories").add(data)
-                            .addOnSuccessListener(ref -> {
-                                showMessage("Story প্রকাশ হয়েছে");
-                                loadStories();
-                            });
+                    Map<String, Object> story = new HashMap<>();
+                    story.put("uid", myUid);
+                    story.put("authorName", myName);
+                    story.put("text", text);
+                    story.put("createdAt", FieldValue.serverTimestamp());
+
+                    db.collection("stories")
+                            .add(story)
+                            .addOnSuccessListener(reference -> loadStories())
+                            .addOnFailureListener(error -> showError("Story প্রকাশ করা যায়নি"));
                 })
-                .setNegativeButton("Cancel", null)
                 .show();
     }
 
-    // 12. Notifications
-
-    private void sendNotification(String targetUid, String message) {
-
-        Map<String, Object> data = new HashMap<>();
-        data.put("message", message);
-        data.put("fromUid", myUid);
-        data.put("createdAt", FieldValue.serverTimestamp());
-        data.put("read", false);
-
-        db.collection("users")
-                .document(targetUid)
-                .collection("notifications")
-                .add(data);
-    }
-
     private void listenNotifications() {
-
         notificationListener = db.collection("users")
                 .document(myUid)
                 .collection("notifications")
                 .addSnapshotListener((snapshot, error) -> {
-
                     if (error != null || snapshot == null) return;
 
-                    // নতুন নোটিফিকেশন পাওয়া গেলে এখানে ডেটা আপডেট হয়।
+                    int unread = 0;
+
+                    for (DocumentSnapshot item : snapshot.getDocuments()) {
+                        Boolean read = item.getBoolean("read");
+                        if (!Boolean.TRUE.equals(read)) unread++;
+                    }
+
+                    notificationText.setText("Notifications: " + unread);
                 });
     }
 
-    private void showNotifications() {
+    private void sendNotification(
+            String targetUid,
+            String message,
+            String type
+    ) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("message", message);
+        data.put("type", type);
+        data.put("fromUid", myUid);
+        data.put("read", false);
+        data.put("createdAt", FieldValue.serverTimestamp());
 
-        db.collection("users")
-                .document(myUid)
+        db.collection("users").document(targetUid)
+                .collection("notifications")
+                .add(data);
+    }
+
+    private void showNotifications() {
+        db.collection("users").document(myUid)
                 .collection("notifications")
                 .orderBy("createdAt", Query.Direction.DESCENDING)
                 .limit(50)
                 .get()
                 .addOnSuccessListener(snapshot -> {
-
                     LinearLayout layout = new LinearLayout(this);
                     layout.setOrientation(LinearLayout.VERTICAL);
 
-                    for (DocumentSnapshot doc :
-                            snapshot.getDocuments()) {
+                    for (DocumentSnapshot item : snapshot.getDocuments()) {
+                        String message = item.getString("message");
+                        if (message == null) message = "Notification";
 
-                        String message = doc.getString("message");
-                        layout.addView(makeText(
-                                message == null ? "Notification" : message,
-                                15));
+                        TextView text = makeText(message, 15, DARK);
+                        layout.addView(text);
+
+                        Boolean read = item.getBoolean("read");
+
+                        if (!Boolean.TRUE.equals(read)) {
+                            item.getReference().update("read", true);
+                        }
                     }
+
+                    ScrollView scroll = new ScrollView(this);
+                    scroll.addView(layout);
 
                     new AlertDialog.Builder(this)
                             .setTitle("Notifications")
-                            .setView(layout)
+                            .setView(scroll)
                             .setPositiveButton("Close", null)
                             .show();
-                });
+                })
+                .addOnFailureListener(error ->
+                        showError("Notifications লোড করা যায়নি"));
     }
 
-    // 13. Report
-
     private void reportPost(String postId, String targetUid) {
-
-        EditText reason = new EditText(this);
-        reason.setHint("Report করার কারণ");
+        EditText input = new EditText(this);
+        input.setHint("Report reason");
 
         new AlertDialog.Builder(this)
                 .setTitle("Report Post")
-                .setView(reason)
-                .setPositiveButton("Submit", (d, w) -> {
-
-                    Map<String, Object> data = new HashMap<>();
-                    data.put("reporterUid", myUid);
-                    data.put("targetUid", targetUid);
-                    data.put("targetId", postId);
-                    data.put("targetType", "post");
-                    data.put("reason", reason.getText().toString());
-                    data.put("status", "pending");
-                    data.put("createdAt", FieldValue.serverTimestamp());
-
-                    db.collection("reports").add(data)
-                            .addOnSuccessListener(ref ->
-                                    showMessage("Report জমা হয়েছে"));
-                })
+                .setView(input)
                 .setNegativeButton("Cancel", null)
+                .setPositiveButton("Submit", (dialog, which) -> {
+                    String reason = input.getText().toString().trim();
+
+                    if (reason.isEmpty()) {
+                        showError("কারণ লিখুন");
+                        return;
+                    }
+
+                    Map<String, Object> report = new HashMap<>();
+                    report.put("postId", postId);
+                    report.put("reportedUid", targetUid);
+                    report.put("reporterUid", myUid);
+                    report.put("reason", reason);
+                    report.put("status", "pending");
+                    report.put("createdAt", FieldValue.serverTimestamp());
+
+                    db.collection("reports")
+                            .add(report)
+                            .addOnSuccessListener(reference ->
+                                    Toast.makeText(this, "Report submitted",
+                                            Toast.LENGTH_SHORT).show())
+                            .addOnFailureListener(error ->
+                                    showError("Report পাঠানো যায়নি"));
+                })
                 .show();
     }
-
-    // 14. Block
 
     private void blockUser(String targetUid) {
-
         if (targetUid == null || targetUid.equals(myUid)) return;
 
-        new AlertDialog.Builder(this)
-                .setTitle("Block User?")
-                .setMessage("এই ব্যবহারকারীকে Block করবেন?")
-                .setPositiveButton("Block", (d, w) -> {
+        Map<String, Object> data = new HashMap<>();
+        data.put("uid", targetUid);
+        data.put("createdAt", FieldValue.serverTimestamp());
 
-                    Map<String, Object> data = new HashMap<>();
-                    data.put("uid", targetUid);
-                    data.put("createdAt", FieldValue.serverTimestamp());
+        db.collection("users").document(myUid)
+                .collection("blocked").document(targetUid)
+                .set(data)
+                .addOnSuccessListener(unused -> {
+                    blockedUsers.add(targetUid);
+                    loadPosts();
+                    loadStories();
 
-                    db.collection("users")
-                            .document(myUid)
-                            .collection("blocked")
-                            .document(targetUid)
-                            .set(data)
-                            .addOnSuccessListener(ref -> {
-                                showMessage("ব্যবহারকারী Block হয়েছে");
-                                loadBlockedUsers();
-                                loadPosts();
-                            });
+                    Toast.makeText(this, "User blocked",
+                            Toast.LENGTH_SHORT).show();
                 })
-                .setNegativeButton("Cancel", null)
-                .show();
+                .addOnFailureListener(error -> showError("Block করা যায়নি"));
     }
-
-    private void loadBlockedUsers() {
-
-        db.collection("users")
-                .document(myUid)
-                .collection("blocked")
-                .get()
-                .addOnSuccessListener(snapshot -> {
-
-                    blockedUsers.clear();
-
-                    for (DocumentSnapshot doc :
-                            snapshot.getDocuments()) {
-                        blockedUsers.add(doc.getId());
-                    }
-                });
-    }
-
-    // 15. Basic Content Safety
 
     private boolean isSafeContent(String text) {
-
         if (text == null || text.trim().isEmpty()) return false;
 
-        String value = text.toLowerCase();
+        String lower = text.toLowerCase();
 
+        // এটি শুধু সাধারণ শব্দ-ভিত্তিক প্রাথমিক ফিল্টার।
+        // পূর্ণাঙ্গ Content Moderation নয়।
         String[] blockedWords = {
                 "নোংরা গালি",
                 "অশ্লীল শব্দ"
         };
 
         for (String word : blockedWords) {
-            if (value.contains(word)) return false;
+            if (lower.contains(word.toLowerCase())) {
+                return false;
+            }
         }
 
         return true;
     }
 
-    // 16. Admin Review
-
     private void showAdminReview() {
-
-        db.collection("users")
-                .document(myUid)
+        db.collection("users").document(myUid)
                 .get()
                 .addOnSuccessListener(user -> {
-
-                    Boolean admin = user.getBoolean("isAdmin");
-
-                    if (admin == null || !admin) {
-                        showMessage("শুধু Admin এই অংশ দেখতে পারবেন");
+                    if (!Boolean.TRUE.equals(user.getBoolean("isAdmin"))) {
+                        showError("Admin permission নেই");
                         return;
                     }
 
                     db.collection("reports")
                             .whereEqualTo("status", "pending")
+                            .limit(50)
                             .get()
                             .addOnSuccessListener(snapshot -> {
+                                LinearLayout layout = new LinearLayout(this);
+                                layout.setOrientation(LinearLayout.VERTICAL);
 
-                                LinearLayout layout =
-                                        new LinearLayout(this);
+                                for (DocumentSnapshot report : snapshot.getDocuments()) {
+                                    String reason = report.getString("reason");
+                                    String postId = report.getString("postId");
 
-                                layout.setOrientation(
-                                        LinearLayout.VERTICAL);
+                                    if (reason == null) reason = "No reason";
 
-                                for (DocumentSnapshot report :
-                                        snapshot.getDocuments()) {
+                                    TextView details = makeText(
+                                            "Post: " + postId + "\nReason: " + reason,
+                                            14,
+                                            DARK
+                                    );
+                                    layout.addView(details);
 
-                                    String reason =
-                                            report.getString("reason");
-
-                                    TextView item = makeText(
-                                            reason == null
-                                                    ? "Report"
-                                                    : reason, 15);
-
-                                    layout.addView(item);
-
-                                    Button review = makeButton("Mark Reviewed");
-
-                                    review.setOnClickListener(v ->
-                                            report.getReference().update(
-                                                    "status", "reviewed"));
-
-                                    layout.addView(review);
+                                    Button reviewed = makeButton("Mark Reviewed");
+                                    reviewed.setOnClickListener(v ->
+                                            report.getReference()
+                                                    .update("status", "reviewed")
+                                                    .addOnSuccessListener(unused -> {
+                                                        layout.removeView(details);
+                                                        layout.removeView(reviewed);
+                                                    })
+                                                    .addOnFailureListener(error ->
+                                                            showError("Update করা যায়নি"))
+                                    );
+                                    layout.addView(reviewed);
                                 }
+
+                                ScrollView scroll = new ScrollView(this);
+                                scroll.addView(layout);
 
                                 new AlertDialog.Builder(this)
                                         .setTitle("Admin Review")
-                                        .setView(layout)
+                                        .setView(scroll)
                                         .setPositiveButton("Close", null)
                                         .show();
-                            });
-                });
+                            })
+                            .addOnFailureListener(error ->
+                                    showError("Reports লোড করা যায়নি"));
+                })
+                .addOnFailureListener(error -> showError("Admin যাচাই করা যায়নি"));
     }
-
-    // 17. Bottom Navigation
-
-    private void createBottomNavigation() {
-
-        LinearLayout nav = new LinearLayout(this);
-        nav.setGravity(Gravity.CENTER);
-        nav.setBackgroundColor(Color.WHITE);
-
-        Button home = makeButton("Home");
-        home.setOnClickListener(v -> loadPosts());
-
-        Button friends = makeButton("Friends");
-        friends.setOnClickListener(v -> showFriends());
-
-        Button messages = makeButton("Messages");
-        messages.setOnClickListener(v -> openChat());
-
-        Button notifications = makeButton("Alerts");
-        notifications.setOnClickListener(v -> showNotifications());
-
-        Button creator = makeButton("Creator");
-        creator.setOnClickListener(v -> openCreatorStudio());
-
-        nav.addView(home);
-        nav.addView(friends);
-        nav.addView(messages);
-        nav.addView(notifications);
-        nav.addView(creator);
-
-        root.addView(nav);
-    }
-
-    // Separate Activities
 
     private void openCreatePost() {
         try {
             startActivity(new Intent(this, CreatePostActivity.class));
         } catch (Exception e) {
-            showMessage("CreatePostActivity এখনো তৈরি করা হয়নি");
+            showError("CreatePostActivity পাওয়া যায়নি");
         }
     }
 
@@ -997,7 +1083,7 @@ public class HomeActivity extends Activity {
         try {
             startActivity(new Intent(this, ChatActivity.class));
         } catch (Exception e) {
-            showMessage("ChatActivity এখনো তৈরি করা হয়নি");
+            showError("ChatActivity পাওয়া যায়নি");
         }
     }
 
@@ -1005,31 +1091,32 @@ public class HomeActivity extends Activity {
         try {
             startActivity(new Intent(this, CreatorStudioActivity.class));
         } catch (Exception e) {
-            showMessage("CreatorStudioActivity এখনো তৈরি করা হয়নি");
+            showError("CreatorStudioActivity পাওয়া যায়নি");
         }
     }
 
-    private void showMessage(String message) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+    private void showError(String message) {
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
     }
 
     @Override
     protected void onDestroy() {
+        super.onDestroy();
 
         if (feedListener != null) {
             feedListener.remove();
+            feedListener = null;
         }
 
         if (notificationListener != null) {
             notificationListener.remove();
+            notificationListener = null;
         }
 
-        for (ListenerRegistration listener : listeners) {
-            listener.remove();
+        for (ListenerRegistration listener : likeListeners) {
+            if (listener != null) listener.remove();
         }
 
-        listeners.clear();
-
-        super.onDestroy();
+        likeListeners.clear();
     }
 }
