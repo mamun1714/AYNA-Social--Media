@@ -1,3 +1,4 @@
+
 package com.mamun.ayna;
 
 import android.app.Activity;
@@ -109,9 +110,7 @@ public class HomeActivity extends Activity {
 
         TextView logo = makeText("AYNA", 26, BLUE);
         logo.setTypeface(null, Typeface.BOLD);
-        header.addView(logo, new LinearLayout.LayoutParams(
-                0, -2, 1
-        ));
+        header.addView(logo, new LinearLayout.LayoutParams(0, -2, 1));
 
         Button searchButton = makeButton("Search");
         searchButton.setOnClickListener(v -> searchUsers());
@@ -164,7 +163,8 @@ public class HomeActivity extends Activity {
             }
 
             if (!isSafeContent(content)) {
-                Toast.makeText(this, "এই লেখা পোস্ট করা যাবে না", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "এই লেখা পোস্ট করা যাবে না",
+                        Toast.LENGTH_LONG).show();
                 return;
             }
 
@@ -187,9 +187,7 @@ public class HomeActivity extends Activity {
 
         mainScroll.addView(mainContent);
 
-        rootLayout.addView(mainScroll, new LinearLayout.LayoutParams(
-                -1, 0, 1
-        ));
+        rootLayout.addView(mainScroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
         createBottomNavigation();
         setContentView(rootLayout);
@@ -276,7 +274,8 @@ public class HomeActivity extends Activity {
         db.collection("posts")
                 .add(post)
                 .addOnSuccessListener(reference ->
-                        Toast.makeText(this, "Post published", Toast.LENGTH_SHORT).show())
+                        Toast.makeText(this, "Post published",
+                                Toast.LENGTH_SHORT).show())
                 .addOnFailureListener(error -> showError("Post করা যায়নি"));
     }
 
@@ -351,9 +350,7 @@ public class HomeActivity extends Activity {
                 image.setAdjustViewBounds(true);
                 image.setScaleType(ImageView.ScaleType.FIT_CENTER);
 
-                card.addView(image, new LinearLayout.LayoutParams(
-                        -1, 350
-                ));
+                card.addView(image, new LinearLayout.LayoutParams(-1, 350));
 
                 Glide.with(this).load(mediaUrl).into(image);
 
@@ -434,7 +431,8 @@ public class HomeActivity extends Activity {
                                         showError("Like করা যায়নি"));
                     }
                 })
-                .addOnFailureListener(error -> showError("Like যাচাই করা যায়নি"));
+                .addOnFailureListener(error ->
+                        showError("Like যাচাই করা যায়নি"));
     }
 
     private void listenLikeCount(String postId, TextView countText) {
@@ -459,9 +457,7 @@ public class HomeActivity extends Activity {
         commentsLayout.setOrientation(LinearLayout.VERTICAL);
         scroll.addView(commentsLayout);
 
-        layout.addView(scroll, new LinearLayout.LayoutParams(
-                -1, 0, 1
-        ));
+        layout.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
         EditText input = new EditText(this);
         input.setHint("Write a comment...");
@@ -517,12 +513,7 @@ public class HomeActivity extends Activity {
 
                         if (parent != null && !parent.isEmpty()) continue;
 
-                        addCommentView(
-                                commentsLayout,
-                                postId,
-                                item,
-                                false
-                        );
+                        addCommentView(commentsLayout, postId, item, false);
 
                         List<DocumentSnapshot> childReplies =
                                 replies.get(item.getId());
@@ -530,11 +521,7 @@ public class HomeActivity extends Activity {
                         if (childReplies != null) {
                             for (DocumentSnapshot reply : childReplies) {
                                 addCommentView(
-                                        commentsLayout,
-                                        postId,
-                                        reply,
-                                        true
-                                );
+                                        commentsLayout, postId, reply, true);
                             }
                         }
                     }
@@ -559,9 +546,7 @@ public class HomeActivity extends Activity {
 
         TextView commentText = makeText(
                 (isReply ? "     ↳ " : "") + author + ": " + text,
-                14,
-                DARK
-        );
+                14, DARK);
 
         parent.addView(commentText);
 
@@ -660,7 +645,6 @@ public class HomeActivity extends Activity {
                                     String userName = user.getString("name");
 
                                     if (userName == null) userName = "User";
-
                                     if (blockedUsers.contains(uid)) continue;
 
                                     Button item = makeButton(userName);
@@ -726,11 +710,16 @@ public class HomeActivity extends Activity {
 
                     dialog.show();
                 })
-                .addOnFailureListener(error -> showError("Profile লোড করা যায়নি"));
+                .addOnFailureListener(error ->
+                        showError("Profile লোড করা যায়নি"));
     }
 
+    // FIX 1: runBatch() বাদ দিয়ে WriteBatch ব্যবহার করা হয়েছে।
     private void toggleFollow(String targetUid) {
-        if (targetUid.equals(myUid)) return;
+        if (targetUid == null || targetUid.trim().isEmpty()
+                || targetUid.equals(myUid)) {
+            return;
+        }
 
         db.collection("users").document(myUid)
                 .collection("following").document(targetUid)
@@ -738,44 +727,44 @@ public class HomeActivity extends Activity {
                 .addOnSuccessListener(document -> {
                     boolean alreadyFollowing = document.exists();
 
-                    db.runBatch(batch -> {
-                        if (alreadyFollowing) {
-                            batch.delete(
-                                    db.collection("users").document(myUid)
-                                            .collection("following").document(targetUid)
-                            );
+                    com.google.firebase.firestore.WriteBatch batch = db.batch();
 
-                            batch.delete(
-                                    db.collection("users").document(targetUid)
-                                            .collection("followers").document(myUid)
-                            );
-                        } else {
-                            Map<String, Object> data = new HashMap<>();
-                            data.put("uid", targetUid);
-                            data.put("createdAt", FieldValue.serverTimestamp());
+                    if (alreadyFollowing) {
+                        batch.delete(
+                                db.collection("users").document(myUid)
+                                        .collection("following").document(targetUid));
 
-                            batch.set(
-                                    db.collection("users").document(myUid)
-                                            .collection("following").document(targetUid),
-                                    data
-                            );
+                        batch.delete(
+                                db.collection("users").document(targetUid)
+                                        .collection("followers").document(myUid));
+                    } else {
+                        Map<String, Object> data = new HashMap<>();
+                        data.put("uid", targetUid);
+                        data.put("createdAt", FieldValue.serverTimestamp());
 
-                            batch.set(
-                                    db.collection("users").document(targetUid)
-                                            .collection("followers").document(myUid),
-                                    data
-                            );
-                        }
+                        batch.set(
+                                db.collection("users").document(myUid)
+                                        .collection("following").document(targetUid),
+                                data);
 
-                        return null;
-                    }).addOnSuccessListener(unused ->
-                            Toast.makeText(this,
-                                    alreadyFollowing ? "Unfollow করা হয়েছে" : "Follow করা হয়েছে",
-                                    Toast.LENGTH_SHORT).show()
-                    ).addOnFailureListener(error ->
-                            showError("Follow পরিবর্তন করা যায়নি"));
+                        batch.set(
+                                db.collection("users").document(targetUid)
+                                        .collection("followers").document(myUid),
+                                data);
+                    }
+
+                    batch.commit()
+                            .addOnSuccessListener(unused ->
+                                    Toast.makeText(this,
+                                            alreadyFollowing
+                                                    ? "Unfollow করা হয়েছে"
+                                                    : "Follow করা হয়েছে",
+                                            Toast.LENGTH_SHORT).show())
+                            .addOnFailureListener(error ->
+                                    showError("Follow পরিবর্তন করা যায়নি"));
                 })
-                .addOnFailureListener(error -> showError("Follow যাচাই করা যায়নি"));
+                .addOnFailureListener(error ->
+                        showError("Follow যাচাই করা যায়নি"));
     }
 
     private void showFriends() {
@@ -800,9 +789,11 @@ public class HomeActivity extends Activity {
                             .setPositiveButton("Close", null)
                             .show();
                 })
-                .addOnFailureListener(error -> showError("Friends লোড করা যায়নি"));
+                .addOnFailureListener(error ->
+                        showError("Friends লোড করা যায়নি"));
     }
 
+    // FIX 2: Lambda-তে final displayText ব্যবহার করা হয়েছে।
     private void loadStories() {
         db.collection("stories")
                 .orderBy("createdAt", Query.Direction.DESCENDING)
@@ -813,22 +804,31 @@ public class HomeActivity extends Activity {
 
                     for (DocumentSnapshot item : snapshot.getDocuments()) {
                         String uid = item.getString("uid");
-                        String text = item.getString("text");
 
-                        if (uid == null || blockedUsers.contains(uid)) continue;
-                        if (text == null) text = "Story";
+                        if (uid == null || blockedUsers.contains(uid)) {
+                            continue;
+                        }
 
-                        Button story = makeButton(text);
+                        String storyText = item.getString("text");
+
+                        final String displayText =
+                                (storyText == null || storyText.trim().isEmpty())
+                                        ? "Story" : storyText;
+
+                        Button story = makeButton(displayText);
+
                         story.setOnClickListener(v ->
                                 new AlertDialog.Builder(this)
                                         .setTitle("Story")
-                                        .setMessage(text)
+                                        .setMessage(displayText)
                                         .setPositiveButton("Close", null)
                                         .show());
 
                         storyLayout.addView(story);
                     }
-                });
+                })
+                .addOnFailureListener(error ->
+                        showError("Stories লোড করা যায়নি"));
     }
 
     private void addStory() {
@@ -858,7 +858,8 @@ public class HomeActivity extends Activity {
                     db.collection("stories")
                             .add(story)
                             .addOnSuccessListener(reference -> loadStories())
-                            .addOnFailureListener(error -> showError("Story প্রকাশ করা যায়নি"));
+                            .addOnFailureListener(error ->
+                                    showError("Story প্রকাশ করা যায়নি"));
                 })
                 .show();
     }
@@ -988,7 +989,8 @@ public class HomeActivity extends Activity {
                     Toast.makeText(this, "User blocked",
                             Toast.LENGTH_SHORT).show();
                 })
-                .addOnFailureListener(error -> showError("Block করা যায়নি"));
+                .addOnFailureListener(error ->
+                        showError("Block করা যায়নি"));
     }
 
     private boolean isSafeContent(String text) {
@@ -1037,9 +1039,7 @@ public class HomeActivity extends Activity {
 
                                     TextView details = makeText(
                                             "Post: " + postId + "\nReason: " + reason,
-                                            14,
-                                            DARK
-                                    );
+                                            14, DARK);
                                     layout.addView(details);
 
                                     Button reviewed = makeButton("Mark Reviewed");
@@ -1068,7 +1068,8 @@ public class HomeActivity extends Activity {
                             .addOnFailureListener(error ->
                                     showError("Reports লোড করা যায়নি"));
                 })
-                .addOnFailureListener(error -> showError("Admin যাচাই করা যায়নি"));
+                .addOnFailureListener(error ->
+                        showError("Admin যাচাই করা যায়নি"));
     }
 
     private void openCreatePost() {
@@ -1079,9 +1080,16 @@ public class HomeActivity extends Activity {
         }
     }
 
+    // FIX 3: সরাসরি ChatActivity.class reference নেই।
+    // ChatActivity.java আলাদা ফাইলে থাকতে হবে।
     private void openChat() {
         try {
-            startActivity(new Intent(this, ChatActivity.class));
+            Intent intent = new Intent();
+            intent.setClassName(
+                    this,
+                    "com.mamun.ayna.ChatActivity"
+            );
+            startActivity(intent);
         } catch (Exception e) {
             showError("ChatActivity পাওয়া যায়নি");
         }
