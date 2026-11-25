@@ -8,8 +8,8 @@ import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.WriteBatch;
 
-import java.util.HashMap;
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -29,97 +29,113 @@ public class FriendRequestManager {
         auth = FirebaseAuth.getInstance();
     }
 
-    private String getCurrentUserId() {
+    private String currentUid() {
         return auth.getCurrentUser() == null
                 ? null : auth.getCurrentUser().getUid();
     }
 
+    private void finish(String id) {
+        synchronized (processing) {
+            processing.remove(id);
+        }
+    }
+
+    private boolean start(String id) {
+        synchronized (processing) {
+            return processing.add(id);
+        }
+    }
+
     // 1. Send Friend Request
     public void sendFriendRequest(
-            String targetUserId, Callback callback) {
+            String targetId,
+            String senderName,
+            Callback callback) {
 
-        String uid = getCurrentUserId();
+        String uid = currentUid();
 
-        if (uid == null || targetUserId == null
-                || targetUserId.trim().isEmpty()
-                || uid.equals(targetUserId)) {
+        if (uid == null || targetId == null
+                || targetId.trim().isEmpty()
+                || uid.equals(targetId)) {
             callback.onFailure("Invalid user.");
             return;
         }
 
-        if (!processing.add(targetUserId)) return;
+        if (!start(targetId)) return;
 
-        DocumentReference incoming = db.collection("Users")
+        DocumentReference incoming = db.collection("users")
                 .document(uid)
-                .collection("FriendRequests")
-                .document(targetUserId);
+                .collection("friendRequests")
+                .document(targetId);
 
-        DocumentReference outgoing = db.collection("Users")
-                .document(targetUserId)
-                .collection("FriendRequests")
+        DocumentReference outgoing = db.collection("users")
+                .document(targetId)
+                .collection("friendRequests")
                 .document(uid);
 
-        DocumentReference friendship = db.collection("Users")
+        DocumentReference friendship = db.collection("users")
                 .document(uid)
-                .collection("Friends")
-                .document(targetUserId);
+                .collection("friends")
+                .document(targetId);
 
-        incoming.get().addOnSuccessListener(incomingDoc -> {
+        incoming.get().addOnSuccessListener(inDoc -> {
 
-            if (incomingDoc.exists()) {
-                finish(targetUserId);
+            if (inDoc.exists()) {
+                finish(targetId);
                 callback.onFailure(
-                        "This user already sent you a request.");
+                        "এই ব্যক্তি ইতিমধ্যে আপনাকে Request পাঠিয়েছেন।");
                 return;
             }
 
-            outgoing.get().addOnSuccessListener(outgoingDoc -> {
+            outgoing.get().addOnSuccessListener(outDoc -> {
 
-                if (outgoingDoc.exists()) {
-                    finish(targetUserId);
+                if (outDoc.exists()) {
+                    finish(targetId);
                     callback.onFailure(
-                            "Friend request already sent.");
+                            "Friend Request ইতিমধ্যে পাঠানো হয়েছে।");
                     return;
                 }
 
                 friendship.get().addOnSuccessListener(friendDoc -> {
 
                     if (friendDoc.exists()) {
-                        finish(targetUserId);
+                        finish(targetId);
                         callback.onFailure(
-                                "You are already friends.");
+                                "আপনারা ইতিমধ্যে Friends।");
                         return;
                     }
 
-                    Map<String, Object> request =
-                            new HashMap<>();
-
-                    request.put("senderId", uid);
+                    Map<String, Object> request = new HashMap<>();
+                    request.put("fromUserId", uid);
+                    request.put("fromName",
+                            senderName == null ? "AYNA User" : senderName);
                     request.put("status", "pending");
+                    request.put("createdAt",
+                            FieldValue.serverTimestamp());
 
                     outgoing.set(request)
-                            .addOnSuccessListener(unused -> {
-                                finish(targetUserId);
+                            .addOnSuccessListener(v -> {
+                                finish(targetId);
                                 callback.onSuccess(
-                                        "Friend Request Sent Successfully");
+                                        "Friend Request পাঠানো হয়েছে।");
                             })
                             .addOnFailureListener(e -> {
-                                finish(targetUserId);
+                                finish(targetId);
                                 callback.onFailure(e.getMessage());
                             });
 
                 }).addOnFailureListener(e -> {
-                    finish(targetUserId);
+                    finish(targetId);
                     callback.onFailure(e.getMessage());
                 });
 
             }).addOnFailureListener(e -> {
-                finish(targetUserId);
+                finish(targetId);
                 callback.onFailure(e.getMessage());
             });
 
         }).addOnFailureListener(e -> {
-            finish(targetUserId);
+            finish(targetId);
             callback.onFailure(e.getMessage());
         });
     }
@@ -128,7 +144,7 @@ public class FriendRequestManager {
     public void acceptFriendRequest(
             String senderId, Callback callback) {
 
-        String uid = getCurrentUserId();
+        String uid = currentUid();
 
         if (uid == null || senderId == null
                 || senderId.trim().isEmpty()
@@ -137,57 +153,49 @@ public class FriendRequestManager {
             return;
         }
 
-        if (!processing.add(senderId)) return;
+        if (!start(senderId)) return;
 
-        DocumentReference requestRef = db.collection("Users")
+        DocumentReference request = db.collection("users")
                 .document(uid)
-                .collection("FriendRequests")
+                .collection("friendRequests")
                 .document(senderId);
 
-        requestRef.get().addOnSuccessListener(snapshot -> {
+        request.get().addOnSuccessListener(snapshot -> {
 
             if (!snapshot.exists()
                     || !"pending".equals(
                     snapshot.getString("status"))) {
-
                 finish(senderId);
-                callback.onFailure("Request not found.");
+                callback.onFailure("Pending request পাওয়া যায়নি।");
                 return;
             }
 
             WriteBatch batch = db.batch();
 
-            Map<String, Object> myFriend =
-                    new HashMap<>();
-            myFriend.put("friendId", senderId);
-            myFriend.put("timestamp",
-                    FieldValue.serverTimestamp());
+            Map<String, Object> mine = new HashMap<>();
+            mine.put("userId", senderId);
+            mine.put("createdAt", FieldValue.serverTimestamp());
 
-            Map<String, Object> senderFriend =
-                    new HashMap<>();
-            senderFriend.put("friendId", uid);
-            senderFriend.put("timestamp",
-                    FieldValue.serverTimestamp());
+            Map<String, Object> theirs = new HashMap<>();
+            theirs.put("userId", uid);
+            theirs.put("createdAt", FieldValue.serverTimestamp());
 
             batch.set(
-                    db.collection("Users").document(uid)
-                            .collection("Friends").document(senderId),
-                    myFriend
-            );
+                    db.collection("users").document(uid)
+                            .collection("friends").document(senderId),
+                    mine);
 
             batch.set(
-                    db.collection("Users").document(senderId)
-                            .collection("Friends").document(uid),
-                    senderFriend
-            );
+                    db.collection("users").document(senderId)
+                            .collection("friends").document(uid),
+                    theirs);
 
-            batch.delete(requestRef);
+            batch.delete(request);
 
             batch.commit()
-                    .addOnSuccessListener(unused -> {
+                    .addOnSuccessListener(v -> {
                         finish(senderId);
-                        callback.onSuccess(
-                                "Friend Request Accepted.");
+                        callback.onSuccess("Friend Request গ্রহণ করা হয়েছে।");
                     })
                     .addOnFailureListener(e -> {
                         finish(senderId);
@@ -204,7 +212,7 @@ public class FriendRequestManager {
     public void rejectFriendRequest(
             String senderId, Callback callback) {
 
-        String uid = getCurrentUserId();
+        String uid = currentUid();
 
         if (uid == null || senderId == null
                 || senderId.trim().isEmpty()
@@ -213,26 +221,27 @@ public class FriendRequestManager {
             return;
         }
 
-        if (!processing.add(senderId)) return;
+        if (!start(senderId)) return;
 
-        DocumentReference requestRef = db.collection("Users")
+        DocumentReference request = db.collection("users")
                 .document(uid)
-                .collection("FriendRequests")
+                .collection("friendRequests")
                 .document(senderId);
 
-        requestRef.get().addOnSuccessListener(snapshot -> {
+        request.get().addOnSuccessListener(snapshot -> {
 
-            if (!snapshot.exists()) {
+            if (!snapshot.exists()
+                    || !"pending".equals(
+                    snapshot.getString("status"))) {
                 finish(senderId);
-                callback.onFailure("Request not found.");
+                callback.onFailure("Pending request পাওয়া যায়নি।");
                 return;
             }
 
-            requestRef.delete()
-                    .addOnSuccessListener(unused -> {
+            request.delete()
+                    .addOnSuccessListener(v -> {
                         finish(senderId);
-                        callback.onSuccess(
-                                "Friend Request Rejected.");
+                        callback.onSuccess("Friend Request প্রত্যাখ্যান করা হয়েছে।");
                     })
                     .addOnFailureListener(e -> {
                         finish(senderId);
@@ -243,9 +252,5 @@ public class FriendRequestManager {
             finish(senderId);
             callback.onFailure(e.getMessage());
         });
-    }
-
-    private void finish(String userId) {
-        processing.remove(userId);
     }
 }
