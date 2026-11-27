@@ -1,0 +1,196 @@
+package com.mamun.ayna;
+
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentReference;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.ListenerRegistration;
+import com.google.firebase.firestore.WriteBatch;
+
+public class FriendManager {
+
+    private final FirebaseFirestore db;
+    private final FirebaseAuth auth;
+
+    public FriendManager() {
+        db = FirebaseFirestore.getInstance();
+        auth = FirebaseAuth.getInstance();
+    }
+
+    public interface ActionCallback {
+        void onSuccess();
+        void onError(Exception exception);
+    }
+
+    public interface StatusCallback {
+        void onResult(boolean isFriend);
+        void onError(Exception exception);
+    }
+
+    public interface FriendListCallback {
+        void onFriend(DocumentSnapshot friend);
+        void onError(Exception exception);
+    }
+
+    private String getCurrentUid() {
+        FirebaseUser user = auth.getCurrentUser();
+        return user == null ? null : user.getUid();
+    }
+
+    private boolean isValid(String value) {
+        return value != null && !value.trim().isEmpty();
+    }
+
+    // Friend Status পরীক্ষা
+    public void checkFriend(
+            String friendId,
+            StatusCallback callback) {
+
+        if (callback == null) return;
+
+        String uid = getCurrentUid();
+
+        if (uid == null) {
+            callback.onError(
+                    new IllegalStateException("আগে Login করতে হবে")
+            );
+            return;
+        }
+
+        if (!isValid(friendId) || uid.equals(friendId)) {
+            callback.onError(
+                    new IllegalArgumentException("সঠিক Friend ID দিন")
+            );
+            return;
+        }
+
+        db.collection("Users")
+                .document(uid)
+                .collection("Friends")
+                .document(friendId)
+                .get()
+                .addOnSuccessListener(snapshot ->
+                        callback.onResult(snapshot.exists()))
+                .addOnFailureListener(callback::onError);
+    }
+
+    // Friend List Live Listener
+    public ListenerRegistration listenFriends(
+            FriendListCallback callback) {
+
+        String uid = getCurrentUid();
+
+        if (uid == null || callback == null) {
+            return null;
+        }
+
+        return db.collection("Users")
+                .document(uid)
+                .collection("Friends")
+                .addSnapshotListener((snapshot, error) -> {
+
+                    if (error != null) {
+                        callback.onError(error);
+                        return;
+                    }
+
+                    if (snapshot == null) return;
+
+                    for (DocumentSnapshot friend :
+                            snapshot.getDocuments()) {
+                        callback.onFriend(friend);
+                    }
+                });
+    }
+
+    // নির্দিষ্ট ব্যবহারকারীর Friend List
+    public ListenerRegistration listenFriendsOf(
+            String userId,
+            FriendListCallback callback) {
+
+        if (!isValid(userId) || callback == null) {
+            return null;
+        }
+
+        return db.collection("Users")
+                .document(userId)
+                .collection("Friends")
+                .addSnapshotListener((snapshot, error) -> {
+
+                    if (error != null) {
+                        callback.onError(error);
+                        return;
+                    }
+
+                    if (snapshot == null) return;
+
+                    for (DocumentSnapshot friend :
+                            snapshot.getDocuments()) {
+                        callback.onFriend(friend);
+                    }
+                });
+    }
+
+    // Unfriend
+    public void unfriend(
+            String friendId,
+            ActionCallback callback) {
+
+        if (callback == null) return;
+
+        String uid = getCurrentUid();
+
+        if (uid == null) {
+            callback.onError(
+                    new IllegalStateException("আগে Login করতে হবে")
+            );
+            return;
+        }
+
+        if (!isValid(friendId) || uid.equals(friendId)) {
+            callback.onError(
+                    new IllegalArgumentException("সঠিক Friend ID দিন")
+            );
+            return;
+        }
+
+        DocumentReference myFriend =
+                db.collection("Users")
+                        .document(uid)
+                        .collection("Friends")
+                        .document(friendId);
+
+        DocumentReference theirFriend =
+                db.collection("Users")
+                        .document(friendId)
+                        .collection("Friends")
+                        .document(uid);
+
+        myFriend.get().addOnSuccessListener(snapshot -> {
+
+            if (!snapshot.exists()) {
+                callback.onError(
+                        new IllegalStateException(
+                                "Friend পাওয়া যায়নি"
+                        )
+                );
+                return;
+            }
+
+            theirFriend.get().addOnSuccessListener(otherSnapshot -> {
+
+                WriteBatch batch = db.batch();
+
+                batch.delete(myFriend);
+                batch.delete(theirFriend);
+
+                batch.commit()
+                        .addOnSuccessListener(v -> callback.onSuccess())
+                        .addOnFailureListener(callback::onError);
+
+            }).addOnFailureListener(callback::onError);
+
+        }).addOnFailureListener(callback::onError);
+    }
+}
