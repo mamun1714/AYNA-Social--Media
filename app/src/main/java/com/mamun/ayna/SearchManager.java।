@@ -1,0 +1,163 @@
+
+package com.mamun.ayna;
+
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.Query;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+public class SearchManager {
+
+    private static final int SEARCH_LIMIT = 20;
+
+    private final FirebaseFirestore db;
+    private final FirebaseAuth auth;
+
+    public SearchManager() {
+        db = FirebaseFirestore.getInstance();
+        auth = FirebaseAuth.getInstance();
+    }
+
+    public interface SearchCallback {
+        void onResults(List<Map<String, Object>> results);
+        void onError(String error);
+    }
+
+    private boolean isValid(String value) {
+        return value != null && !value.trim().isEmpty();
+    }
+
+    private String getCurrentUid() {
+        if (auth.getCurrentUser() == null) {
+            return null;
+        }
+        return auth.getCurrentUser().getUid();
+    }
+
+    private String normalize(String value) {
+        return value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private void searchCollection(
+            String collection,
+            String field,
+            String searchText,
+            SearchCallback callback) {
+
+        if (!isValid(searchText)) {
+            callback.onError("Search text cannot be empty");
+            return;
+        }
+
+        String keyword = normalize(searchText);
+
+        db.collection(collection)
+                .orderBy(field)
+                .startAt(keyword)
+                .endAt(keyword + "\uf8ff")
+                .limit(SEARCH_LIMIT)
+                .get()
+                .addOnSuccessListener(snapshot -> {
+
+                    List<Map<String, Object>> results =
+                            new ArrayList<>();
+
+                    for (DocumentSnapshot document :
+                            snapshot.getDocuments()) {
+
+                        Map<String, Object> item =
+                                new HashMap<>(document.getData());
+
+                        item.put("documentId", document.getId());
+                        results.add(item);
+                    }
+
+                    callback.onResults(results);
+                })
+                .addOnFailureListener(e ->
+                        callback.onError(e.getMessage()));
+    }
+
+    // Search users by lowercase name field
+    public void searchUsersByName(
+            String name,
+            SearchCallback callback) {
+
+        searchCollection(
+                "users",
+                "nameLowercase",
+                name,
+                callback
+        );
+    }
+
+    // Search users by lowercase username field
+    public void searchUsersByUsername(
+            String username,
+            SearchCallback callback) {
+
+        searchCollection(
+                "users",
+                "usernameLowercase",
+                username,
+                callback
+        );
+    }
+
+    // Search posts by lowercase content field
+    public void searchPosts(
+            String text,
+            SearchCallback callback) {
+
+        searchCollection(
+                "posts",
+                "contentLowercase",
+                text,
+                callback
+        );
+    }
+
+    // Search users by exact user ID
+    public void getUserById(
+            String userId,
+            SearchCallback callback) {
+
+        if (!isValid(userId)) {
+            callback.onError("Invalid user ID");
+            return;
+        }
+
+        db.collection("users")
+                .document(userId)
+                .get()
+                .addOnSuccessListener(document -> {
+
+                    List<Map<String, Object>> results =
+                            new ArrayList<>();
+
+                    if (document.exists()) {
+                        Map<String, Object> item =
+                                new HashMap<>(document.getData());
+
+                        item.put("documentId", document.getId());
+                        results.add(item);
+                    }
+
+                    callback.onResults(results);
+                })
+                .addOnFailureListener(e ->
+                        callback.onError(e.getMessage()));
+    }
+
+    // Get current logged-in user's ID
+    public String getCurrentUserId() {
+        return getCurrentUid();
+    }
+
+}
