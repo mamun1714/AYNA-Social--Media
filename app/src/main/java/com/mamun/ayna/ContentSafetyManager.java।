@@ -1,0 +1,195 @@
+
+package com.mamun.ayna;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
+
+public class ContentSafetyManager {
+
+    private static final int MAX_TEXT_LENGTH = 10000;
+
+    private final List<String> blockedTerms = new ArrayList<>(
+            Arrays.asList(
+                    "spam",
+                    "scam",
+                    "fraud"
+            )
+    );
+
+    public enum SafetyStatus {
+        SAFE,
+        BLOCKED,
+        NEEDS_REVIEW
+    }
+
+    public static class SafetyResult {
+        private final SafetyStatus status;
+        private final String reason;
+
+        public SafetyResult(SafetyStatus status, String reason) {
+            this.status = status;
+            this.reason = reason;
+        }
+
+        public SafetyStatus getStatus() {
+            return status;
+        }
+
+        public String getReason() {
+            return reason;
+        }
+
+        public boolean isSafe() {
+            return status == SafetyStatus.SAFE;
+        }
+
+        public boolean isBlocked() {
+            return status == SafetyStatus.BLOCKED;
+        }
+
+        public boolean needsReview() {
+            return status == SafetyStatus.NEEDS_REVIEW;
+        }
+    }
+
+    // Check post or comment text
+    public SafetyResult checkText(String text) {
+
+        if (text == null || text.trim().isEmpty()) {
+            return new SafetyResult(
+                    SafetyStatus.BLOCKED,
+                    "Text cannot be empty"
+            );
+        }
+
+        String cleaned = text.trim();
+
+        if (cleaned.length() > MAX_TEXT_LENGTH) {
+            return new SafetyResult(
+                    SafetyStatus.BLOCKED,
+                    "Text is too long"
+            );
+        }
+
+        String normalized = cleaned.toLowerCase(Locale.ROOT);
+
+        for (String term : blockedTerms) {
+            if (containsWholeTerm(normalized, term)) {
+                return new SafetyResult(
+                        SafetyStatus.NEEDS_REVIEW,
+                        "Potentially harmful language detected"
+                );
+            }
+        }
+
+        if (containsSuspiciousLink(normalized)) {
+            return new SafetyResult(
+                    SafetyStatus.NEEDS_REVIEW,
+                    "Suspicious link requires review"
+            );
+        }
+
+        return new SafetyResult(
+                SafetyStatus.SAFE,
+                "No basic text safety issue detected"
+        );
+    }
+
+    // Add a term to the local review list
+    public void addBlockedTerm(String term) {
+        if (term != null && !term.trim().isEmpty()) {
+            String value = term.trim().toLowerCase(Locale.ROOT);
+
+            if (!blockedTerms.contains(value)) {
+                blockedTerms.add(value);
+            }
+        }
+    }
+
+    // Remove a term from the local review list
+    public void removeBlockedTerm(String term) {
+        if (term != null) {
+            blockedTerms.remove(
+                    term.trim().toLowerCase(Locale.ROOT)
+            );
+        }
+    }
+
+    // Get current local review terms
+    public List<String> getBlockedTerms() {
+        return Collections.unmodifiableList(
+                new ArrayList<>(blockedTerms)
+        );
+    }
+
+    private boolean containsWholeTerm(String text, String term) {
+        String pattern = "(?<![a-z0-9])"
+                + Pattern.quote(term)
+                + "(?![a-z0-9])";
+
+        return Pattern.compile(pattern).matcher(text).find();
+    }
+
+    private boolean containsSuspiciousLink(String text) {
+
+        String urlPattern =
+                "(https?://|www\\.)\\S+";
+
+        java.util.regex.Matcher matcher =
+                Pattern.compile(urlPattern).matcher(text);
+
+        while (matcher.find()) {
+            String url = matcher.group().toLowerCase(Locale.ROOT);
+
+            if (url.contains("bit.ly")
+                    || url.contains("tinyurl")
+                    || url.contains("shorturl")) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Check whether media needs external moderation
+    public SafetyResult checkMedia(String mediaUrl, String mediaType) {
+
+        if (mediaUrl == null || mediaUrl.trim().isEmpty()) {
+            return new SafetyResult(
+                    SafetyStatus.BLOCKED,
+                    "Media URL is missing"
+            );
+        }
+
+        if (mediaType == null || mediaType.trim().isEmpty()) {
+            return new SafetyResult(
+                    SafetyStatus.BLOCKED,
+                    "Media type is missing"
+            );
+        }
+
+        String type = mediaType.trim().toLowerCase(Locale.ROOT);
+
+        if (!type.equals("image") && !type.equals("video")) {
+            return new SafetyResult(
+                    SafetyStatus.BLOCKED,
+                    "Unsupported media type"
+            );
+        }
+
+        return new SafetyResult(
+                SafetyStatus.NEEDS_REVIEW,
+                "Image or video requires actual media moderation"
+        );
+    }
+
+    // Check whether a post can be submitted directly
+    public boolean canPublishDirectly(SafetyResult result) {
+        return result != null
+                && result.getStatus() == SafetyStatus.SAFE;
+    }
+}
